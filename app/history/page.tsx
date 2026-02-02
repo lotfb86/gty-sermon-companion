@@ -1,6 +1,8 @@
 import { getAllSermons } from '@/lib/db';
 import HistoryContent from './HistoryContent';
 
+export const dynamic = 'force-dynamic';
+
 export default async function HistoryPage() {
   const allSermons = await getAllSermons(500, 0);
 
