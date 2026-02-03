@@ -1,11 +1,10 @@
-import Link from 'next/link';
 import { BookOpen, Download, Search } from 'lucide-react';
 import {
   getAllBooks,
   parseScriptureQuery,
   searchTranscriptStudyByReference,
-  type TranscriptStudyFacet,
 } from '@/lib/db';
+import TranscriptStudyFeed from '@/components/transcript-study/TranscriptStudyFeed';
 
 const OLD_TESTAMENT = [
   'Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy',
@@ -67,42 +66,22 @@ function sortBooksByCanonicalOrder(books: string[]): string[] {
   });
 }
 
-function buildTranscriptStudyHref(options: {
-  book?: string;
-  chapter?: number;
-  verse?: number;
+function buildExportQuery(options: {
+  book: string;
+  chapter: number;
+  verse: number;
   year?: number;
-  doctrines?: string[];
-  offset?: number;
+  doctrines: string[];
 }): string {
   const params = new URLSearchParams();
-  if (options.book) params.set('book', options.book);
-  if (options.chapter) params.set('chapter', String(options.chapter));
-  if (options.verse) params.set('verse', String(options.verse));
+  params.set('book', options.book);
+  params.set('chapter', String(options.chapter));
+  params.set('verse', String(options.verse));
   if (options.year) params.set('year', String(options.year));
-  for (const doctrine of options.doctrines || []) {
+  for (const doctrine of options.doctrines) {
     params.append('doctrine', doctrine);
   }
-  if ((options.offset || 0) > 0) {
-    params.set('offset', String(options.offset));
-  }
-  const queryString = params.toString();
-  return `/transcript-study${queryString ? `?${queryString}` : ''}`;
-}
-
-function hasDoctrineSelected(selected: string[], doctrine: string): boolean {
-  return selected.includes(doctrine);
-}
-
-function getToggledDoctrines(selected: string[], doctrine: string): string[] {
-  if (selected.includes(doctrine)) {
-    return selected.filter((item) => item !== doctrine);
-  }
-  return [...selected, doctrine];
-}
-
-function renderFacetLabel(facet: TranscriptStudyFacet): string {
-  return `${facet.value} (${facet.count})`;
+  return params.toString();
 }
 
 export default async function TranscriptStudyPage({ searchParams }: PageProps) {
@@ -113,7 +92,6 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
   const selectedVerse = getNumberParam(params.verse);
   const selectedYear = getNumberParam(params.year);
   const selectedDoctrines = unique(getMultiParams(params.doctrine));
-  const offset = Math.max(0, getNumberParam(params.offset) || 0);
 
   const normalizedBook = rawBookInput
     ? parseScriptureQuery(`${rawBookInput} 1`)?.book
@@ -121,6 +99,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
 
   const booksRaw = await getAllBooks();
   const availableBooks = sortBooksByCanonicalOrder(booksRaw.map((item) => item.book));
+
   const chapterIsValid = selectedChapter !== undefined && selectedChapter > 0;
   const verseIsValid = selectedVerse !== undefined && selectedVerse > 0;
   const canRunSearch = Boolean(normalizedBook && chapterIsValid && verseIsValid);
@@ -133,23 +112,18 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         selectedDoctrines,
         year: selectedYear,
         limit: PAGE_SIZE,
-        offset,
+        offset: 0,
       })
     : null;
 
-  const selectedReference = canRunSearch
-    ? `${normalizedBook} ${selectedChapter}:${selectedVerse}`
-    : '';
-
-  const currentSearchHref = buildTranscriptStudyHref({
-    book: normalizedBook,
-    chapter: selectedChapter,
-    verse: selectedVerse,
-    year: selectedYear,
-    doctrines: selectedDoctrines,
-  });
-  const currentSearchQuery = currentSearchHref.includes('?')
-    ? currentSearchHref.split('?')[1]
+  const exportQuery = canRunSearch
+    ? buildExportQuery({
+        book: normalizedBook!,
+        chapter: selectedChapter!,
+        verse: selectedVerse!,
+        year: selectedYear,
+        doctrines: selectedDoctrines,
+      })
     : '';
 
   return (
@@ -218,198 +192,70 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
 
         {rawBookInput && !normalizedBook && (
           <div className="card text-sm text-[var(--text-secondary)]">
-            Book name not recognized. Try the full canonical name (example: <span className="text-[var(--accent)]">James</span>).
+            Book name not recognized. Try a canonical name like <span className="text-[var(--accent)]">James</span>.
           </div>
         )}
 
         {!canRunSearch && !rawBookInput && (
           <div className="card text-sm text-[var(--text-secondary)]">
-            Select all three fields (book, chapter, verse) to run Bill Search.
+            Enter book, chapter, and verse to run Bill Search.
           </div>
         )}
 
         {results && (
           <>
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.2em]">
-                  Results ({results.total_items})
-                </h3>
-                <span className="text-xs text-[var(--text-tertiary)]">
-                  {normalizedBook} {selectedChapter}:{selectedVerse}
-                </span>
-              </div>
-
-              {results.year_facets.length > 0 && (
-                <form action="/transcript-study" method="GET" className="card p-3">
-                  <input type="hidden" name="book" value={normalizedBook} />
-                  <input type="hidden" name="chapter" value={selectedChapter} />
-                  <input type="hidden" name="verse" value={selectedVerse} />
-                  {selectedDoctrines.map((doctrine) => (
-                    <input key={doctrine} type="hidden" name="doctrine" value={doctrine} />
-                  ))}
-                  <div className="flex items-end gap-2">
-                    <label className="flex-1 text-xs text-[var(--text-secondary)]">
-                      <span className="mb-1 block">Year Filter</span>
-                      <select name="year" defaultValue={selectedYear ? String(selectedYear) : ''} className="input py-2 px-3 text-sm h-11">
-                        <option value="">All years</option>
-                        {results.year_facets.map((facet) => (
-                          <option key={facet.value} value={facet.value}>
-                            {renderFacetLabel(facet)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button type="submit" className="btn btn-secondary h-11 px-4">
-                      Apply
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {results.doctrine_facets.length > 0 && (
-                <div className="card p-3 space-y-2">
-                  <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-[0.15em]">
-                    Doctrine Filter
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      href={buildTranscriptStudyHref({
-                        book: normalizedBook,
-                        chapter: selectedChapter,
-                        verse: selectedVerse,
-                        year: selectedYear,
-                        doctrines: [],
-                      })}
-                      className={`tag ${selectedDoctrines.length === 0 ? 'tag-active' : ''}`}
-                    >
-                      All Doctrines
-                    </Link>
-                    {results.doctrine_facets.map((facet) => {
-                      const active = hasDoctrineSelected(selectedDoctrines, facet.value);
-                      const nextDoctrines = getToggledDoctrines(selectedDoctrines, facet.value);
-                      return (
-                        <Link
-                          key={facet.value}
-                          href={buildTranscriptStudyHref({
-                            book: normalizedBook,
-                            chapter: selectedChapter,
-                            verse: selectedVerse,
-                            year: selectedYear,
-                            doctrines: nextDoctrines,
-                          })}
-                          className={`tag ${active ? 'tag-active' : ''}`}
-                        >
-                          {renderFacetLabel(facet)}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {results.items.length === 0 ? (
-              <div className="card text-sm text-[var(--text-secondary)]">
-                No transcript references match these filters.
-              </div>
-            ) : (
-              <section className="space-y-4">
-                {results.items.map((item) => (
-                  <article key={item.id} className="card-elevated space-y-3">
-                    <div className="pb-2 border-b border-white/10">
-                      <h3 className="font-serif text-base font-semibold text-[var(--text-primary)]">{item.title}</h3>
-                      <div className="text-xs text-[var(--text-secondary)] mt-1 flex flex-wrap gap-2">
-                        {item.date_preached && (
-                          <span>{new Date(item.date_preached).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                        )}
-                        {item.primary_reference && (
-                          <span className="text-[var(--accent)]">Primary Text: {item.primary_reference}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      {item.occurrences.map((occurrence, index) => (
-                        <div key={`${item.id}-${index}`} className="rounded-xl border border-white/10 bg-[var(--surface)] p-3 space-y-2">
-                          <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
-                            {occurrence.paragraph}
-                          </p>
-                          <div className="text-[11px] font-medium text-[var(--accent)]">
-                            Matched Reference: {occurrence.matched_reference}
-                          </div>
-                          <div className="rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] p-2.5">
-                            <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-1">
-                              How It Was Used
-                            </div>
-                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                              {occurrence.usage_context || 'No usage summary available for this passage in sermon metadata.'}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                      </div>
-
-                    <div className="pt-1">
-                      <Link href={`/sermons/${item.sermon_code}?t=${encodeURIComponent(selectedReference)}`} className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors">
-                        Open sermon →
-                      </Link>
-                    </div>
-                  </article>
+            {results.year_facets.length > 0 && (
+              <form action="/transcript-study" method="GET" className="card p-3">
+                <input type="hidden" name="book" value={normalizedBook} />
+                <input type="hidden" name="chapter" value={selectedChapter} />
+                <input type="hidden" name="verse" value={selectedVerse} />
+                {selectedDoctrines.map((doctrine) => (
+                  <input key={doctrine} type="hidden" name="doctrine" value={doctrine} />
                 ))}
-
-                {(offset > 0 || results.has_more) && (
-                  <div className="flex justify-center gap-3">
-                    {offset > 0 && (
-                      <Link
-                        href={buildTranscriptStudyHref({
-                          book: normalizedBook,
-                          chapter: selectedChapter,
-                          verse: selectedVerse,
-                          year: selectedYear,
-                          doctrines: selectedDoctrines,
-                          offset: Math.max(0, offset - PAGE_SIZE),
-                        })}
-                        className="btn btn-secondary text-sm"
-                      >
-                        ← Previous
-                      </Link>
-                    )}
-                    {results.has_more && (
-                      <Link
-                        href={buildTranscriptStudyHref({
-                          book: normalizedBook,
-                          chapter: selectedChapter,
-                          verse: selectedVerse,
-                          year: selectedYear,
-                          doctrines: selectedDoctrines,
-                          offset: offset + PAGE_SIZE,
-                        })}
-                        className="btn btn-primary text-sm"
-                      >
-                        More Results →
-                      </Link>
-                    )}
-                  </div>
-                )}
-              </section>
+                <div className="flex items-end gap-2">
+                  <label className="flex-1 text-xs text-[var(--text-secondary)]">
+                    <span className="mb-1 block">Year Filter</span>
+                    <select name="year" defaultValue={selectedYear ? String(selectedYear) : ''} className="input py-2 px-3 text-sm h-11">
+                      <option value="">All years</option>
+                      {results.year_facets.map((facet) => (
+                        <option key={facet.value} value={facet.value}>
+                          {facet.value} ({facet.count})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="submit" className="btn btn-secondary h-11 px-4">
+                    Apply
+                  </button>
+                </div>
+              </form>
             )}
 
+            <TranscriptStudyFeed
+              initialResult={results}
+              book={normalizedBook!}
+              chapter={selectedChapter!}
+              verse={selectedVerse!}
+              year={selectedYear}
+              selectedDoctrines={selectedDoctrines}
+              pageSize={PAGE_SIZE}
+            />
+
             {results.total_items > 0 && (
-              <section className="card-elevated space-y-3">
+              <section className="card-elevated space-y-3" id="export-feed">
                 <div className="flex items-center gap-2">
                   <Download size={16} className="text-[var(--accent)]" />
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">Export This Feed</h3>
                 </div>
                 <div className="flex gap-2">
                   <a
-                    href={`/api/transcript-study/export?${currentSearchQuery}&format=pdf`}
+                    href={`/api/transcript-study/export?${exportQuery}&format=pdf`}
                     className="btn btn-secondary flex-1"
                   >
                     PDF
                   </a>
                   <a
-                    href={`/api/transcript-study/export?${currentSearchQuery}&format=docx`}
+                    href={`/api/transcript-study/export?${exportQuery}&format=docx`}
                     className="btn btn-secondary flex-1"
                   >
                     DOCX
