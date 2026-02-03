@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Search, BookOpen, Headphones, Clock } from "lucide-react";
+import { Home, Search, SearchCheck, BookOpen, Headphones, Clock } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -10,6 +10,7 @@ export default function BottomNav() {
   const navItems = [
     { name: "Home", icon: Home, path: "/" },
     { name: "Search", icon: Search, path: "/search" },
+    { name: "Bill", icon: SearchCheck, path: "/transcript-study" },
     { name: "Browse", icon: BookOpen, path: "/browse/scripture" },
     { name: "Listening", icon: Headphones, path: "/listening" },
     { name: "History", icon: Clock, path: "/history" },

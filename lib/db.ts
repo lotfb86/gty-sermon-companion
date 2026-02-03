@@ -1,4 +1,5 @@
 import { createClient } from '@libsql/client';
+import { cleanTranscriptText } from './transcript-export';
 
 const client = createClient({
   url: process.env.TURSO_DATABASE_URL!,
@@ -1713,6 +1714,371 @@ export async function searchTranscripts(
   }
 
   return filteredResults;
+}
+
+interface TranscriptStudyMetadataRef {
+  reference: string;
+  context?: string;
+}
+
+interface TranscriptStudyMetadata {
+  scripture?: {
+    all_references?: TranscriptStudyMetadataRef[];
+  };
+  doctrine?: {
+    key_doctrines_defended?: string[];
+  };
+}
+
+interface TranscriptStudyCandidateRow {
+  id: number;
+  sermon_code: string;
+  title: string;
+  date_preached?: string;
+  transcript_text?: string;
+  llm_metadata?: string;
+  primary_reference?: string;
+}
+
+export interface TranscriptStudyOccurrence {
+  paragraph: string;
+  matched_reference: string;
+  usage_context?: string;
+}
+
+export interface TranscriptStudySermonGroup {
+  id: number;
+  sermon_code: string;
+  title: string;
+  date_preached?: string;
+  primary_reference?: string;
+  doctrines: string[];
+  occurrences: TranscriptStudyOccurrence[];
+}
+
+export interface TranscriptStudyFacet {
+  value: string;
+  count: number;
+}
+
+export interface TranscriptStudySearchResult {
+  items: TranscriptStudySermonGroup[];
+  total_items: number;
+  has_more: boolean;
+  doctrine_facets: TranscriptStudyFacet[];
+  year_facets: TranscriptStudyFacet[];
+}
+
+export interface TranscriptStudySearchOptions {
+  book: string;
+  chapter: number;
+  verse: number;
+  selectedDoctrines?: string[];
+  year?: number;
+  limit?: number;
+  offset?: number;
+}
+
+function splitTranscriptIntoStudyParagraphs(cleanedTranscript: string): string[] {
+  const normalized = cleanedTranscript.replace(/\r\n/g, '\n').trim();
+  if (!normalized) return [];
+
+  const paragraphBlocks = normalized
+    .split(/\n{2,}/)
+    .map((block) => block.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  if (paragraphBlocks.length > 1) {
+    return paragraphBlocks;
+  }
+
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length > 1) {
+    const grouped: string[] = [];
+    const chunkSize = 3;
+    for (let i = 0; i < lines.length; i += chunkSize) {
+      grouped.push(lines.slice(i, i + chunkSize).join(' '));
+    }
+    return grouped;
+  }
+
+  const sentenceBlocks = normalized
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"“'])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  if (sentenceBlocks.length > 1) {
+    const grouped: string[] = [];
+    const chunkSize = 3;
+    for (let i = 0; i < sentenceBlocks.length; i += chunkSize) {
+      grouped.push(sentenceBlocks.slice(i, i + chunkSize).join(' '));
+    }
+    return grouped;
+  }
+
+  return [normalized.replace(/\s+/g, ' ').trim()];
+}
+
+function parseMetadataSafe(llmMetadata?: string): TranscriptStudyMetadata | null {
+  if (!llmMetadata) return null;
+  try {
+    return JSON.parse(llmMetadata) as TranscriptStudyMetadata;
+  } catch {
+    return null;
+  }
+}
+
+function parseScriptureReferenceText(reference: string): ParsedScriptureQuery | null {
+  const normalized = reference.replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
+  const parsed = parseScriptureQuery(normalized);
+  if (parsed) return parsed;
+
+  const loose = normalized.match(/^(\d?\s*[A-Za-z][A-Za-z\s]*?)\s+(\d+)(?::(\d+)(?:\s*-\s*(\d+))?)?/);
+  if (!loose) return null;
+
+  const book = normalizeBookName(loose[1].trim());
+  if (!book) return null;
+
+  const chapter = parseInt(loose[2], 10);
+  const verse = loose[3] ? parseInt(loose[3], 10) : undefined;
+  const verseEnd = loose[4] ? parseInt(loose[4], 10) : undefined;
+
+  if (verse !== undefined) {
+    return { book, chapter, verse, verseEnd };
+  }
+  return { book, chapter };
+}
+
+function referenceContainsTargetVerse(
+  reference: ParsedScriptureQuery | null,
+  targetBook: string,
+  targetChapter: number,
+  targetVerse: number
+): boolean {
+  if (!reference) return false;
+  if (reference.book !== targetBook || reference.chapter !== targetChapter) return false;
+  if (reference.verse === undefined) return true;
+
+  const start = reference.verse;
+  const end = reference.verseEnd ?? reference.verse;
+  const normalized = normalizeRange(start, end);
+  return normalized.start <= targetVerse && normalized.end >= targetVerse;
+}
+
+function extractUsageContextsForVerse(metadata: TranscriptStudyMetadata | null, book: string, chapter: number, verse: number): TranscriptStudyMetadataRef[] {
+  const refs = metadata?.scripture?.all_references || [];
+  return refs.filter((item) =>
+    Boolean(item.reference) &&
+    referenceContainsTargetVerse(parseScriptureReferenceText(item.reference), book, chapter, verse)
+  );
+}
+
+function getDoctrineTags(metadata: TranscriptStudyMetadata | null): string[] {
+  const doctrines = metadata?.doctrine?.key_doctrines_defended || [];
+  return doctrines
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function doctrineFilterMatches(doctrines: string[], selectedDoctrines: string[]): boolean {
+  if (selectedDoctrines.length === 0) return true;
+  return doctrines.some((doctrine) => selectedDoctrines.includes(doctrine));
+}
+
+function getVerseReferenceRegex(book: string, chapter: number): RegExp {
+  const variants = getBookSearchVariants(book)
+    .map((variant) => escapeRegex(variant).replace(/\s+/g, '\\s+'))
+    .sort((a, b) => b.length - a.length);
+
+  return new RegExp(
+    `\\b(?:${variants.join('|')})\\.?\\s+(?:chapter\\s+)?${chapter}(?:\\s*:\\s*|\\s*,?\\s*verses?\\s+|\\s+verses?\\s+)(\\d+)(?:\\s*[-–—]\\s*(\\d+))?`,
+    'gi'
+  );
+}
+
+function extractTranscriptStudyOccurrences(
+  transcriptText: string | undefined,
+  book: string,
+  chapter: number,
+  verse: number,
+  usageContexts: TranscriptStudyMetadataRef[]
+): TranscriptStudyOccurrence[] {
+  if (!transcriptText) return [];
+
+  const cleanedTranscript = cleanTranscriptText(transcriptText);
+  if (!cleanedTranscript) return [];
+
+  const paragraphs = splitTranscriptIntoStudyParagraphs(cleanedTranscript);
+  if (paragraphs.length === 0) return [];
+
+  const referenceRegex = getVerseReferenceRegex(book, chapter);
+  const occurrences: TranscriptStudyOccurrence[] = [];
+
+  for (const paragraph of paragraphs) {
+    referenceRegex.lastIndex = 0;
+    let match = referenceRegex.exec(paragraph);
+    let matchedReferenceText: string | null = null;
+
+    while (match) {
+      const verseStart = parseInt(match[1], 10);
+      const verseEnd = match[2] ? parseInt(match[2], 10) : verseStart;
+      const range = normalizeRange(verseStart, verseEnd);
+      if (range.start <= verse && range.end >= verse) {
+        matchedReferenceText = match[0];
+        break;
+      }
+      match = referenceRegex.exec(paragraph);
+    }
+
+    if (!matchedReferenceText) continue;
+
+    let usageContext: string | undefined;
+    if (usageContexts.length > 0) {
+      usageContext = usageContexts[0].context || undefined;
+    }
+
+    occurrences.push({
+      paragraph,
+      matched_reference: matchedReferenceText.trim(),
+      usage_context: usageContext,
+    });
+  }
+
+  return occurrences;
+}
+
+function createSortedFacetList(counts: Map<string, number>): TranscriptStudyFacet[] {
+  return [...counts.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.value.localeCompare(b.value);
+    });
+}
+
+export async function getVersesForBookChapter(book: string, chapter: number): Promise<number[]> {
+  const result = await client.execute({
+    sql: `
+      SELECT verse_start, verse_end
+      FROM scripture_references
+      WHERE book = ?
+        AND chapter = ?
+        AND verse_start IS NOT NULL
+      ORDER BY verse_start ASC
+    `,
+    args: [book, chapter],
+  });
+
+  const verseSet = new Set<number>();
+
+  for (const row of result.rows) {
+    const start = Number(row.verse_start);
+    const endRaw = row.verse_end == null ? start : Number(row.verse_end);
+    const range = normalizeRange(start, endRaw);
+    const cappedEnd = Math.min(range.end, range.start + 300);
+    for (let v = range.start; v <= cappedEnd; v++) {
+      verseSet.add(v);
+    }
+  }
+
+  return [...verseSet].sort((a, b) => a - b);
+}
+
+export async function searchTranscriptStudyByReference(
+  options: TranscriptStudySearchOptions
+): Promise<TranscriptStudySearchResult> {
+  const {
+    book,
+    chapter,
+    verse,
+    selectedDoctrines = [],
+    year,
+    limit = 8,
+    offset = 0,
+  } = options;
+
+  const candidatesResult = await client.execute({
+    sql: `
+      SELECT
+        s.id,
+        s.sermon_code,
+        s.title,
+        s.date_preached,
+        s.transcript_text,
+        s.llm_metadata,
+        (SELECT sr2.reference_text FROM scripture_references sr2
+         WHERE sr2.sermon_id = s.id ORDER BY sr2.id LIMIT 1) as primary_reference
+      FROM sermons s
+      JOIN scripture_references sr ON sr.sermon_id = s.id
+      WHERE s.transcript_text IS NOT NULL
+        AND sr.book = ?
+        AND sr.chapter = ?
+        AND (sr.verse_start IS NULL OR (sr.verse_start <= ? AND COALESCE(sr.verse_end, sr.verse_start) >= ?))
+      GROUP BY s.id
+      ORDER BY s.date_preached DESC, s.id DESC
+    `,
+    args: [book, chapter, verse, verse],
+  });
+
+  const candidates = rowsToObjects<TranscriptStudyCandidateRow>(candidatesResult.rows);
+  const allGroups: TranscriptStudySermonGroup[] = [];
+  const doctrineCounts = new Map<string, number>();
+  const yearCounts = new Map<string, number>();
+
+  for (const candidate of candidates) {
+    const metadata = parseMetadataSafe(candidate.llm_metadata);
+    const doctrines = getDoctrineTags(metadata);
+    const usageContexts = extractUsageContextsForVerse(metadata, book, chapter, verse);
+    const occurrences = extractTranscriptStudyOccurrences(
+      candidate.transcript_text,
+      book,
+      chapter,
+      verse,
+      usageContexts
+    );
+
+    if (occurrences.length === 0) continue;
+
+    for (const doctrine of new Set(doctrines)) {
+      doctrineCounts.set(doctrine, (doctrineCounts.get(doctrine) || 0) + 1);
+    }
+
+    if (candidate.date_preached) {
+      const yearText = candidate.date_preached.slice(0, 4);
+      if (yearText.length === 4) {
+        yearCounts.set(yearText, (yearCounts.get(yearText) || 0) + 1);
+      }
+    }
+
+    allGroups.push({
+      id: candidate.id,
+      sermon_code: candidate.sermon_code,
+      title: candidate.title,
+      date_preached: candidate.date_preached,
+      primary_reference: candidate.primary_reference,
+      doctrines,
+      occurrences,
+    });
+  }
+
+  const withYearFilter = year
+    ? allGroups.filter((group) => group.date_preached?.slice(0, 4) === String(year))
+    : allGroups;
+  const filtered = withYearFilter.filter((group) => doctrineFilterMatches(group.doctrines, selectedDoctrines));
+  const paginated = filtered.slice(offset, offset + limit);
+
+  return {
+    items: paginated,
+    total_items: filtered.length,
+    has_more: offset + limit < filtered.length,
+    doctrine_facets: createSortedFacetList(doctrineCounts),
+    year_facets: createSortedFacetList(yearCounts).sort((a, b) => Number(b.value) - Number(a.value)),
+  };
 }
 
 export default client;
