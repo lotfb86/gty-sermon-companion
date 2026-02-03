@@ -353,9 +353,19 @@ export default async function SermonDetailPage({
       </header>
 
       <main className="px-6 py-6 space-y-6">
-        {/* Audio Player */}
+        {/* Play Button + Audio Player */}
         {sermon.audio_url ? (
           <div className="card-elevated">
+            <div className="flex items-center gap-4 mb-4">
+              <PlayButton sermon={sermon} size="lg" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-[var(--text-primary)]">Listen Now</p>
+                <p className="text-xs text-[var(--text-tertiary)]">
+                  {sermon.duration ? `${Math.round(sermon.duration / 60)} min` : 'Audio available'}
+                </p>
+              </div>
+              <AddToQueueButton sermon={sermon} variant="icon" />
+            </div>
             <AudioPlayer />
           </div>
         ) : (
@@ -393,7 +403,7 @@ export default async function SermonDetailPage({
             download
             className="btn btn-primary flex-1"
           >
-            Download Study Guide
+            Download PDF (with Transcript)
           </a>
           {sermon.audio_url ? (
             <a

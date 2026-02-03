@@ -157,14 +157,20 @@ export default function NowPlaying() {
         </button>
       </div>
 
-      {/* Playback Rate */}
-      <div className="flex justify-center mt-3">
+      {/* Playback Rate & View Details */}
+      <div className="flex items-center justify-center gap-3 mt-3">
         <button
           onClick={cyclePlaybackRate}
           className="text-xs font-mono font-bold text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors px-3 py-1 rounded-full border border-[var(--border-subtle)] hover:border-[var(--accent)]/30"
         >
           {playbackRate}x
         </button>
+        <Link
+          href={`/sermons/${currentSermon.code}`}
+          className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors px-3 py-1 rounded-full border border-[var(--accent)]/20 hover:border-[var(--accent)]/40"
+        >
+          View Details →
+        </Link>
       </div>
     </div>
   );

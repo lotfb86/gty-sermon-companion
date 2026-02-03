@@ -121,6 +121,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         const pos = audioRef.current.currentTime;
         const dur = audioRef.current.duration || 0;
         localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
+        localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
         syncToServer(currentSermon.code, pos, dur);
       }
     }, 5000);
@@ -282,6 +283,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       const pos = audioRef.current.currentTime;
       const dur = audioRef.current.duration || 0;
       localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
+      localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
       lastServerSync.current = 0;
       syncToServer(currentSermon.code, pos, dur);
     }
@@ -429,6 +431,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       const pos = audioRef.current.currentTime;
       const dur = audioRef.current.duration || 0;
       localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
+      localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
       lastServerSync.current = 0;
       syncToServer(currentSermon.code, pos, dur);
     }

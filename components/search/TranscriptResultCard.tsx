@@ -1,0 +1,74 @@
+import Link from 'next/link';
+import PlayButton from '@/components/PlayButton';
+import AddToQueueButton from '@/components/AddToQueueButton';
+import type { TranscriptSnippet } from '@/lib/snippets';
+
+interface TranscriptSearchResult {
+  id: number;
+  sermon_code: string;
+  title: string;
+  audio_url?: string;
+  date_preached?: string;
+  verse?: string;
+  series_name?: string;
+  snippets: TranscriptSnippet[];
+}
+
+interface TranscriptResultCardProps {
+  result: TranscriptSearchResult;
+}
+
+export default function TranscriptResultCard({ result }: TranscriptResultCardProps) {
+  return (
+    <div className="card group relative">
+      <Link href={`/sermons/${result.sermon_code}`} className="block">
+        <div className="flex items-center gap-3 mb-2">
+          <PlayButton sermon={result} size="sm" />
+          <div className="flex-1 min-w-0">
+            <h3 className="font-serif font-semibold text-sm text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
+              {result.title}
+            </h3>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)] mt-0.5">
+              {result.verse && (
+                <span className="text-[var(--accent)] font-medium">{result.verse}</span>
+              )}
+              {result.series_name && (
+                <span className="line-clamp-1">{result.series_name}</span>
+              )}
+              {result.date_preached && (
+                <>
+                  <span>·</span>
+                  <span>
+                    {new Date(result.date_preached).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Transcript Snippets */}
+        {result.snippets.length > 0 && (
+          <div className="space-y-1.5 ml-13">
+            {result.snippets.map((snippet, idx) => (
+              <p
+                key={idx}
+                className="text-xs text-[var(--text-tertiary)] leading-relaxed line-clamp-2 [&_mark]:bg-[var(--accent)]/20 [&_mark]:text-[var(--accent)] [&_mark]:px-0.5 [&_mark]:rounded"
+                dangerouslySetInnerHTML={{ __html: snippet.text }}
+              />
+            ))}
+          </div>
+        )}
+      </Link>
+      <div className="absolute top-2 right-2">
+        <AddToQueueButton sermon={result} variant="icon" />
+      </div>
+    </div>
+  );
+}
+
+export type { TranscriptSearchResult };

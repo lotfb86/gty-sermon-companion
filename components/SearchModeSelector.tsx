@@ -5,6 +5,7 @@ import { useTransition } from 'react';
 
 const SEARCH_MODES = [
   { value: 'all', label: 'All' },
+  { value: 'transcript', label: 'Transcript' },
   { value: 'scripture', label: 'Scripture' },
   { value: 'topic', label: 'Topic' },
   { value: 'keyword', label: 'Keyword' },

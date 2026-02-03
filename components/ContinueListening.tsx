@@ -20,6 +20,7 @@ interface ListeningEntry {
   position: number;
   duration: number;
   progress: number;
+  lastPlayed: number;
 }
 
 function formatTime(seconds: number): string {
@@ -48,7 +49,8 @@ export default function ContinueListening({ allSermons }: { allSermons: SermonDa
                 if (!sermon) return null;
                 const dur = h.duration || sermon.duration || 0;
                 const progress = dur > 0 ? Math.min(100, (h.position / dur) * 100) : 0;
-                return { sermon, position: h.position, duration: dur, progress };
+                const lastPlayed = h.updated_at ? new Date(h.updated_at).getTime() : 0;
+                return { sermon, position: h.position, duration: dur, progress, lastPlayed };
               })
               .filter(Boolean) as ListeningEntry[];
           }
@@ -66,15 +68,17 @@ export default function ContinueListening({ allSermons }: { allSermons: SermonDa
               if (sermon) {
                 const duration = sermon.duration || 0;
                 const progress = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
-                items.push({ sermon, position, duration, progress });
+                const lastPlayedStr = localStorage.getItem(`sermon-${code}-lastPlayed`);
+                const lastPlayed = lastPlayedStr ? parseInt(lastPlayedStr, 10) : 0;
+                items.push({ sermon, position, duration, progress, lastPlayed });
               }
             }
           }
         }
       }
 
-      // Only in-progress (< 95%)
-      const inProg = items.filter(e => e.progress < 95).sort((a, b) => b.position - a.position);
+      // Only in-progress (< 95%), sorted by most recently played
+      const inProg = items.filter(e => e.progress < 95).sort((a, b) => b.lastPlayed - a.lastPlayed);
       setEntries(inProg);
       setLoaded(true);
     }

@@ -1,6 +1,7 @@
 'use client';
 
-import { ChevronUp, ChevronDown, X } from 'lucide-react';
+import { ChevronUp, ChevronDown, X, Info } from 'lucide-react';
+import Link from 'next/link';
 import type { QueueItem as QueueItemType } from '@/context/AudioContext';
 
 interface QueueItemProps {
@@ -74,6 +75,16 @@ export default function QueueItem({
           <ChevronDown size={14} />
         </button>
       </div>
+
+      {/* Details Link */}
+      <Link
+        href={`/sermons/${item.sermonCode}`}
+        onClick={(e) => e.stopPropagation()}
+        className="p-1 text-[var(--text-quaternary)] hover:text-[var(--accent)] transition-colors shrink-0"
+        title="View details"
+      >
+        <Info size={14} />
+      </Link>
 
       {/* Remove Button */}
       <button

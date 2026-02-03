@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getSermonsByScripture, getReferencingSermons, type ScriptureFilterOptions } from '@/lib/db';
 import FilterBar from '@/components/FilterBar';
 import PlayButton from '@/components/PlayButton';
+import AddToQueueButton from '@/components/AddToQueueButton';
 import { Suspense } from 'react';
 
 const SORT_OPTIONS = [
@@ -94,48 +95,52 @@ export default async function ScriptureChapterPage({ params, searchParams }: Pag
                 : metadata?.summary?.brief;
 
               return (
-                <Link
-                  key={sermon.id}
-                  href={`/sermons/${sermon.sermon_code}`}
-                  className="card group"
-                >
-                  <div className="flex items-center gap-4">
-                    <PlayButton sermon={sermon} size="sm" />
+                <div key={sermon.id} className="card group relative">
+                  <Link
+                    href={`/sermons/${sermon.sermon_code}`}
+                    className="block"
+                  >
+                    <div className="flex items-center gap-4">
+                      <PlayButton sermon={sermon} size="sm" />
 
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-serif font-medium text-[var(--text-primary)] line-clamp-2 mb-1 group-hover:text-[var(--accent)] transition-colors">
-                        {sermon.title}
-                      </h3>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-serif font-medium text-[var(--text-primary)] line-clamp-2 mb-1 group-hover:text-[var(--accent)] transition-colors">
+                          {sermon.title}
+                        </h3>
 
-                      {sermon.verse && (
-                        <p className="text-[11px] text-[var(--accent)] font-medium mb-1">
-                          {sermon.verse}
-                        </p>
-                      )}
-                      <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)] mb-2">
-                        <span>
-                          {sermon.date_preached
-                            ? new Date(sermon.date_preached).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                              })
-                            : <span className="italic text-[var(--text-quaternary)]">Date unknown</span>
-                          }
-                        </span>
-                        {sermon.transcript_text && (
-                          <span className="text-[var(--accent)]">• Transcript</span>
+                        {sermon.verse && (
+                          <p className="text-[11px] text-[var(--accent)] font-medium mb-1">
+                            {sermon.verse}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)] mb-2">
+                          <span>
+                            {sermon.date_preached
+                              ? new Date(sermon.date_preached).toLocaleDateString('en-US', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                })
+                              : <span className="italic text-[var(--text-quaternary)]">Date unknown</span>
+                            }
+                          </span>
+                          {sermon.transcript_text && (
+                            <span className="text-[var(--accent)]">• Transcript</span>
+                          )}
+                        </div>
+
+                        {summary && (
+                          <p className="text-sm text-[var(--text-secondary)] line-clamp-2">
+                            {summary}
+                          </p>
                         )}
                       </div>
-
-                      {summary && (
-                        <p className="text-sm text-[var(--text-secondary)] line-clamp-2">
-                          {summary}
-                        </p>
-                      )}
                     </div>
+                  </Link>
+                  <div className="absolute top-2 right-2">
+                    <AddToQueueButton sermon={sermon} variant="icon" />
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -159,42 +164,46 @@ export default async function ScriptureChapterPage({ params, searchParams }: Pag
 
             <div className="space-y-3">
               {referencingSermons.map((sermon) => (
-                <Link
-                  key={sermon.id}
-                  href={`/sermons/${sermon.sermon_code}`}
-                  className="card group"
-                >
-                  <div className="flex items-center gap-4">
-                    <PlayButton sermon={sermon} size="sm" />
+                <div key={sermon.id} className="card group relative">
+                  <Link
+                    href={`/sermons/${sermon.sermon_code}`}
+                    className="block"
+                  >
+                    <div className="flex items-center gap-4">
+                      <PlayButton sermon={sermon} size="sm" />
 
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-serif font-medium text-[var(--text-primary)] line-clamp-2 mb-1 group-hover:text-[var(--accent)] transition-colors">
-                        {sermon.title}
-                      </h3>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-serif font-medium text-[var(--text-primary)] line-clamp-2 mb-1 group-hover:text-[var(--accent)] transition-colors">
+                          {sermon.title}
+                        </h3>
 
-                      {sermon.verse && (
-                        <p className="text-[11px] text-[var(--accent)] font-medium mb-0.5">
-                          {sermon.verse}
-                        </p>
-                      )}
-                      <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
-                        <span>
-                          {sermon.date_preached
-                            ? new Date(sermon.date_preached).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                              })
-                            : <span className="italic text-[var(--text-quaternary)]">Date unknown</span>
-                          }
-                        </span>
-                        {sermon.transcript_text && (
-                          <span className="text-[var(--accent)]">• Transcript</span>
+                        {sermon.verse && (
+                          <p className="text-[11px] text-[var(--accent)] font-medium mb-0.5">
+                            {sermon.verse}
+                          </p>
                         )}
+                        <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
+                          <span>
+                            {sermon.date_preached
+                              ? new Date(sermon.date_preached).toLocaleDateString('en-US', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                })
+                              : <span className="italic text-[var(--text-quaternary)]">Date unknown</span>
+                            }
+                          </span>
+                          {sermon.transcript_text && (
+                            <span className="text-[var(--accent)]">• Transcript</span>
+                          )}
+                        </div>
                       </div>
                     </div>
+                  </Link>
+                  <div className="absolute top-2 right-2">
+                    <AddToQueueButton sermon={sermon} variant="icon" />
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
 

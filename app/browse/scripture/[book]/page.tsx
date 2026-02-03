@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getChaptersForBook, getSermonsByScripture } from '@/lib/db';
 import BottomNav from '@/components/BottomNav';
 import BookCover from '@/components/BookCover';
+import AddToQueueButton from '@/components/AddToQueueButton';
 
 export default async function ScriptureBookPage({
   params,
@@ -76,56 +77,66 @@ export default async function ScriptureBookPage({
                 }
 
                 return (
-                  <Link
-                    key={sermon.id}
-                    href={`/sermons/${sermon.sermon_code}`}
-                    className="card"
-                  >
-                    <div className="flex gap-3">
-                      <div className="flex-shrink-0">
-                        <BookCover title={sermon.title} size="sm" />
+                  <div key={sermon.id} className="card group relative">
+                    <Link
+                      href={`/sermons/${sermon.sermon_code}`}
+                      className="block"
+                    >
+                      <div className="flex gap-3">
+                        <div className="flex-shrink-0">
+                          <BookCover title={sermon.title} size="sm" />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-serif font-semibold text-sm text-[var(--text-primary)] mb-1 line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
+                            {sermon.title}
+                          </h3>
+
+                          {sermon.verse && (
+                            <p className="text-[11px] text-[var(--accent)] font-medium mb-1">
+                              {sermon.verse}
+                            </p>
+                          )}
+
+                          {sermon.date_preached && (
+                            <div className="text-xs text-[var(--text-tertiary)] mb-2">
+                              {new Date(sermon.date_preached).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </div>
+                          )}
+
+                          {metadata?.topics && metadata.topics.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {metadata.topics.slice(0, 2).map((topic: string, idx: number) => (
+                                <span
+                                  key={idx}
+                                  className="text-xs px-2 py-1 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-full text-[var(--text-tertiary)]"
+                                >
+                                  {topic}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-serif font-semibold text-sm text-[var(--text-primary)] mb-1 line-clamp-2">
-                          {sermon.title}
-                        </h3>
-
-                        {sermon.date_preached && (
-                          <div className="text-xs text-[var(--text-tertiary)] mb-2">
-                            {new Date(sermon.date_preached).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </div>
-                        )}
-
-                        {metadata?.topics && metadata.topics.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {metadata.topics.slice(0, 2).map((topic: string, idx: number) => (
-                              <span
-                                key={idx}
-                                className="text-xs px-2 py-1 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-full text-[var(--text-tertiary)]"
-                              >
-                                {topic}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                    </Link>
+                    <div className="absolute top-2 right-2">
+                      <AddToQueueButton sermon={sermon} variant="icon" />
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
 
-            {allSermons.length > 5 && (
+            {allSermons.length > 5 && chapters.length > 0 && (
               <Link
-                href={`/browse/scripture/${encodeURIComponent(bookName)}/all`}
+                href={`/browse/scripture/${encodeURIComponent(bookName)}/${chapters[0].chapter}`}
                 className="btn btn-secondary w-full mt-4"
               >
-                View all sermons →
+                Browse all chapters →
               </Link>
             )}
           </section>

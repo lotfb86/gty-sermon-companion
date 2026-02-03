@@ -1,12 +1,14 @@
 import Link from 'next/link';
-import { search, getCachedMetadataValues, type SearchFilterOptions } from '@/lib/db';
+import { search, searchTranscripts, getCachedMetadataValues, type SearchFilterOptions } from '@/lib/db';
 import { Search as SearchIcon } from 'lucide-react';
 import SeriesResultCard from '@/components/search/SeriesResultCard';
 import SermonResultCard from '@/components/search/SermonResultCard';
+import TranscriptResultCard from '@/components/search/TranscriptResultCard';
 import FilterBar from '@/components/FilterBar';
 import SearchModeSelector from '@/components/SearchModeSelector';
 import { Suspense } from 'react';
 import { getDimension } from '@/lib/metadata';
+import { extractSnippets } from '@/lib/snippets';
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevance' },
@@ -123,8 +125,29 @@ export default async function SearchPage({ searchParams }: PageProps) {
     });
   }
 
-  // Run main search when there's a query (for all modes including metadata modes)
-  const results = query ? await search(query, filters, sermonOffset) : null;
+  // Run transcript search if in transcript mode
+  const isTranscriptMode = mode === 'transcript';
+  const transcriptResults = (isTranscriptMode && query)
+    ? await searchTranscripts(query, 31, sermonOffset)
+    : null;
+
+  // Process transcript results: extract snippets, strip full text
+  const transcriptWithSnippets = transcriptResults
+    ? transcriptResults.slice(0, 30).map(row => ({
+        id: row.id,
+        sermon_code: row.sermon_code,
+        title: row.title,
+        audio_url: row.audio_url,
+        date_preached: row.date_preached,
+        verse: row.verse,
+        series_name: row.series_name,
+        snippets: extractSnippets(row.transcript_text || '', query, 2, 140),
+      }))
+    : null;
+  const hasMoreTranscripts = transcriptResults ? transcriptResults.length > 30 : false;
+
+  // Run main search when there's a query (for non-transcript modes)
+  const results = (query && !isTranscriptMode) ? await search(query, filters, sermonOffset) : null;
 
   // Build pagination URL helper
   const buildPaginationUrl = (newOffset: number) => {
@@ -213,8 +236,55 @@ export default async function SearchPage({ searchParams }: PageProps) {
           </section>
         )}
 
-        {/* Results */}
-        {results ? (
+        {/* Transcript Results */}
+        {transcriptWithSnippets ? (
+          <>
+            <section className="space-y-3">
+              <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.2em]">
+                Transcript Matches ({transcriptWithSnippets.length}{hasMoreTranscripts ? '+' : ''})
+              </h3>
+              <div className="space-y-3">
+                {transcriptWithSnippets.map((result) => (
+                  <TranscriptResultCard key={result.id} result={result} />
+                ))}
+              </div>
+            </section>
+
+            {/* Transcript Pagination */}
+            {(sermonOffset > 0 || hasMoreTranscripts) && (
+              <div className="flex gap-3 justify-center">
+                {sermonOffset > 0 && (
+                  <Link
+                    href={buildPaginationUrl(Math.max(0, sermonOffset - 30))}
+                    className="btn btn-secondary text-sm"
+                  >
+                    ← Previous
+                  </Link>
+                )}
+                {hasMoreTranscripts && (
+                  <Link
+                    href={buildPaginationUrl(sermonOffset + 30)}
+                    className="btn btn-primary text-sm"
+                  >
+                    More Results →
+                  </Link>
+                )}
+              </div>
+            )}
+
+            {transcriptWithSnippets.length === 0 && (
+              <div className="text-center py-16">
+                <div className="text-4xl mb-3">📜</div>
+                <h3 className="font-serif text-base font-semibold mb-2 text-[var(--text-primary)]">
+                  No transcript matches
+                </h3>
+                <p className="text-[var(--text-secondary)] mb-4">
+                  Try a different search term or switch to &quot;All&quot; mode
+                </p>
+              </div>
+            )}
+          </>
+        ) : results ? (
           <>
             {/* Filter Bar */}
             <Suspense fallback={null}>

@@ -1351,4 +1351,53 @@ export async function countSermonsByMetadata(
   return Number(result.rows[0].cnt);
 }
 
+// Transcript-focused search — returns sermons with matching transcript content
+export interface TranscriptSearchRow {
+  id: number;
+  sermon_code: string;
+  title: string;
+  audio_url?: string;
+  date_preached?: string;
+  verse?: string;
+  series_name?: string;
+  transcript_text?: string;
+  transcript_matches: number;
+}
+
+export async function searchTranscripts(
+  query: string,
+  limit = 30,
+  offset = 0
+): Promise<TranscriptSearchRow[]> {
+  const searchTerm = `%${query}%`;
+  const lowerQuery = query.toLowerCase();
+
+  const sql = `
+    SELECT
+      s.id,
+      s.sermon_code,
+      s.title,
+      s.audio_url,
+      s.date_preached,
+      s.transcript_text,
+      (SELECT sr.reference_text FROM scripture_references sr
+       WHERE sr.sermon_id = s.id ORDER BY sr.id LIMIT 1) as verse,
+      se.name as series_name,
+      (LENGTH(LOWER(COALESCE(s.transcript_text, ''))) - LENGTH(REPLACE(LOWER(COALESCE(s.transcript_text, '')), ?, ''))) / LENGTH(?) as transcript_matches
+    FROM sermons s
+    LEFT JOIN series se ON s.series_id = se.id
+    WHERE s.transcript_text IS NOT NULL
+      AND LOWER(s.transcript_text) LIKE LOWER(?)
+    ORDER BY transcript_matches DESC, s.date_preached DESC
+    LIMIT ? OFFSET ?
+  `;
+
+  const result = await client.execute({
+    sql,
+    args: [lowerQuery, lowerQuery, searchTerm, limit, offset],
+  });
+
+  return rowsToObjects<TranscriptSearchRow>(result.rows);
+}
+
 export default client;
