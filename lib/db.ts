@@ -1538,8 +1538,21 @@ export async function searchTranscripts(
   limit = 30,
   offset = 0
 ): Promise<TranscriptSearchRow[]> {
-  const searchTerm = `%${query}%`;
-  const lowerQuery = query.toLowerCase();
+  // Check if query is a scripture reference - if so, expand abbreviations
+  // e.g., "Rom 12:2" → search for "Romans 12" in transcripts
+  const scriptureRef = parseScriptureQuery(query);
+  let searchQuery = query;
+
+  if (scriptureRef) {
+    // Build expanded search term with full book name
+    searchQuery = scriptureRef.book;
+    if (scriptureRef.chapter) {
+      searchQuery += ` ${scriptureRef.chapter}`;
+    }
+  }
+
+  const searchTerm = `%${searchQuery}%`;
+  const lowerQuery = searchQuery.toLowerCase();
 
   const sql = `
     SELECT
