@@ -440,7 +440,7 @@ function normalizeBookName(input: string): string | null {
 }
 
 // Detect if a search query is a scripture reference
-function parseScriptureQuery(query: string): { book: string; chapter?: number; verse?: number } | null {
+export function parseScriptureQuery(query: string): { book: string; chapter?: number; verse?: number } | null {
   const trimmed = query.trim();
 
   // Pattern to extract potential book name and the rest (chapter/verse)

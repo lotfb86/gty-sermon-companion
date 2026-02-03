@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { search, searchTranscripts, getCachedMetadataValues, type SearchFilterOptions } from '@/lib/db';
+import { search, searchTranscripts, getCachedMetadataValues, parseScriptureQuery, type SearchFilterOptions } from '@/lib/db';
 import { Search as SearchIcon } from 'lucide-react';
 import SeriesResultCard from '@/components/search/SeriesResultCard';
 import SermonResultCard from '@/components/search/SermonResultCard';
@@ -130,6 +130,10 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const transcriptResults = (isTranscriptMode && query)
     ? await searchTranscripts(query, 31, sermonOffset)
     : null;
+  const scriptureRef = parseScriptureQuery(query);
+  const snippetQuery = scriptureRef
+    ? `${scriptureRef.book}${scriptureRef.chapter ? ` ${scriptureRef.chapter}` : ''}`
+    : query;
 
   // Process transcript results: extract snippets, strip full text
   const transcriptWithSnippets = transcriptResults
@@ -141,7 +145,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
         date_preached: row.date_preached,
         verse: row.verse,
         series_name: row.series_name,
-        snippets: extractSnippets(row.transcript_text || '', query, 2, 140),
+        snippets: extractSnippets(row.transcript_text || '', snippetQuery, 2, 140),
       }))
     : null;
   const hasMoreTranscripts = transcriptResults ? transcriptResults.length > 30 : false;
