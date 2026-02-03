@@ -43,7 +43,7 @@ export default function AlphabetNav({ letters }: AlphabetNavProps) {
   }, []);
 
   return (
-    <div className="sticky top-[72px] z-30 bg-[var(--bg-primary)]/95 backdrop-blur-sm border-b border-white/5 px-2 py-2">
+    <div className="px-2 py-2 border-t border-white/5">
       <div className="flex justify-center gap-[2px] flex-wrap">
         {letters.map((letter) => (
           <button

@@ -61,18 +61,19 @@ export default async function BrowseTopicsPage() {
 
   return (
     <div className="pb-32 animate-fade-in">
-      {/* Header */}
-      <header className="px-4 pt-10 pb-3 glass sticky top-0 z-40 border-b border-white/5">
-        <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">
-          Browse by Topic
-        </h1>
-        <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">
-          {displayTopics.length} topics
-        </p>
+      {/* Header + Alphabet Nav (sticky together) */}
+      <header className="glass sticky top-0 z-40 border-b border-white/5">
+        <div className="px-4 pt-10 pb-2">
+          <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">
+            Browse by Topic
+          </h1>
+          <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">
+            {displayTopics.length} topics
+          </p>
+        </div>
+        {/* Alphabet Quick-Nav */}
+        <AlphabetNav letters={letters} />
       </header>
-
-      {/* Alphabet Quick-Nav */}
-      <AlphabetNav letters={letters} />
 
       <main className="px-4 py-4">
         {/* Topic Search */}
