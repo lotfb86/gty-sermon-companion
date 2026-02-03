@@ -439,8 +439,22 @@ function normalizeBookName(input: string): string | null {
   return null;
 }
 
+export interface ParsedScriptureQuery {
+  book: string;
+  chapter?: number;
+  verse?: number;
+  verseEnd?: number;
+}
+
+function buildScriptureRef(book: string, chapter?: number, verse?: number, verseEnd?: number): ParsedScriptureQuery {
+  if (verse !== undefined) {
+    return { book, chapter, verse, verseEnd };
+  }
+  return { book, chapter };
+}
+
 // Detect if a search query is a scripture reference
-export function parseScriptureQuery(query: string): { book: string; chapter?: number; verse?: number } | null {
+export function parseScriptureQuery(query: string): ParsedScriptureQuery | null {
   const trimmed = query.trim();
 
   // Pattern to extract potential book name and the rest (chapter/verse)
@@ -463,37 +477,113 @@ export function parseScriptureQuery(query: string): { book: string; chapter?: nu
   const restTrimmed = rest.trim();
 
   // Parse chapter and verse from the rest
-  // "chapter 12 verse 2" or "chapter 12, verse 2"
-  const chapterVerseWords = restTrimmed.match(/^chapter\s+(\d+)[\s,]+verse\s+(\d+)/i);
+  // "chapter 12 verse 2" or "chapter 12, verses 2-4"
+  const chapterVerseWords = restTrimmed.match(/^chapter\s+(\d+)[\s,]+verses?\s+(\d+)(?:\s*[-–—]\s*(\d+))?/i);
   if (chapterVerseWords) {
-    return { book, chapter: parseInt(chapterVerseWords[1]), verse: parseInt(chapterVerseWords[2]) };
+    const verse = parseInt(chapterVerseWords[2], 10);
+    const verseEnd = chapterVerseWords[3] ? parseInt(chapterVerseWords[3], 10) : undefined;
+    return buildScriptureRef(book, parseInt(chapterVerseWords[1], 10), verse, verseEnd);
   }
 
-  // "chapter 12:2"
-  const chapterColonVerse = restTrimmed.match(/^chapter\s+(\d+):(\d+)/i);
+  // "chapter 12:2" or "chapter 12:2-4"
+  const chapterColonVerse = restTrimmed.match(/^chapter\s+(\d+):(\d+)(?:\s*[-–—]\s*(\d+))?/i);
   if (chapterColonVerse) {
-    return { book, chapter: parseInt(chapterColonVerse[1]), verse: parseInt(chapterColonVerse[2]) };
+    const verse = parseInt(chapterColonVerse[2], 10);
+    const verseEnd = chapterColonVerse[3] ? parseInt(chapterColonVerse[3], 10) : undefined;
+    return buildScriptureRef(book, parseInt(chapterColonVerse[1], 10), verse, verseEnd);
   }
 
   // "chapter 12"
   const chapterOnly = restTrimmed.match(/^chapter\s+(\d+)$/i);
   if (chapterOnly) {
-    return { book, chapter: parseInt(chapterOnly[1]) };
+    return { book, chapter: parseInt(chapterOnly[1], 10) };
   }
 
   // "12:2" or "12:2-5"
-  const standardWithVerse = restTrimmed.match(/^(\d+):(\d+)/);
+  const standardWithVerse = restTrimmed.match(/^(\d+):(\d+)(?:\s*[-–—]\s*(\d+))?/);
   if (standardWithVerse) {
-    return { book, chapter: parseInt(standardWithVerse[1]), verse: parseInt(standardWithVerse[2]) };
+    const verse = parseInt(standardWithVerse[2], 10);
+    const verseEnd = standardWithVerse[3] ? parseInt(standardWithVerse[3], 10) : undefined;
+    return buildScriptureRef(book, parseInt(standardWithVerse[1], 10), verse, verseEnd);
   }
 
   // "12" (chapter only)
   const chapterNum = restTrimmed.match(/^(\d+)$/);
   if (chapterNum) {
-    return { book, chapter: parseInt(chapterNum[1]) };
+    return { book, chapter: parseInt(chapterNum[1], 10) };
   }
 
   return null;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getBookSearchVariants(book: string): string[] {
+  const variants = new Set<string>([book]);
+
+  for (const [abbr, canonicalBook] of Object.entries(BOOK_ABBREVIATIONS)) {
+    if (canonicalBook === book) {
+      variants.add(abbr);
+    }
+  }
+
+  if (book === 'Psalms') {
+    variants.add('Psalm');
+  } else if (book === 'Psalm') {
+    variants.add('Psalms');
+  }
+
+  return [...variants].sort((a, b) => b.length - a.length);
+}
+
+function normalizeRange(start: number, end?: number): { start: number; end: number } {
+  if (end === undefined) return { start, end: start };
+  return start <= end ? { start, end } : { start: end, end: start };
+}
+
+function versesOverlap(
+  targetStart: number,
+  targetEnd: number,
+  candidateStart: number,
+  candidateEnd: number
+): boolean {
+  return candidateStart <= targetEnd && candidateEnd >= targetStart;
+}
+
+function transcriptContainsScriptureVerse(transcript: string | undefined, scriptureRef: ParsedScriptureQuery): boolean {
+  if (!transcript || !scriptureRef.chapter || scriptureRef.verse === undefined) {
+    return true;
+  }
+
+  const variants = getBookSearchVariants(scriptureRef.book)
+    .map((variant) => escapeRegex(variant).replace(/\s+/g, '\\s+'));
+
+  if (variants.length === 0) return false;
+
+  const chapter = scriptureRef.chapter;
+  const targetRange = normalizeRange(scriptureRef.verse, scriptureRef.verseEnd);
+
+  const referenceRegex = new RegExp(
+    `\\b(?:${variants.join('|')})\\.?\\s+${chapter}\\s*(?::|(?:,\\s*)?verses?\\s+)(\\d+)(?:\\s*[-–—]\\s*(\\d+))?`,
+    'gi'
+  );
+
+  let match = referenceRegex.exec(transcript);
+  while (match) {
+    const verseStart = parseInt(match[1], 10);
+    const verseEnd = match[2] ? parseInt(match[2], 10) : verseStart;
+    const candidateRange = normalizeRange(verseStart, verseEnd);
+
+    if (versesOverlap(targetRange.start, targetRange.end, candidateRange.start, candidateRange.end)) {
+      return true;
+    }
+
+    match = referenceRegex.exec(transcript);
+  }
+
+  return false;
 }
 
 // Enhanced search: Sermons with relevance scoring and optional filters
@@ -1533,27 +1623,12 @@ export interface TranscriptSearchRow {
   transcript_matches: number;
 }
 
-export async function searchTranscripts(
-  query: string,
-  limit = 30,
-  offset = 0
+async function fetchTranscriptSearchBatch(
+  lowerQuery: string,
+  searchTerm: string,
+  limit: number,
+  offset: number
 ): Promise<TranscriptSearchRow[]> {
-  // Check if query is a scripture reference - if so, expand abbreviations
-  // e.g., "Rom 12:2" → search for "Romans 12" in transcripts
-  const scriptureRef = parseScriptureQuery(query);
-  let searchQuery = query;
-
-  if (scriptureRef) {
-    // Build expanded search term with full book name
-    searchQuery = scriptureRef.book;
-    if (scriptureRef.chapter) {
-      searchQuery += ` ${scriptureRef.chapter}`;
-    }
-  }
-
-  const searchTerm = `%${searchQuery}%`;
-  const lowerQuery = searchQuery.toLowerCase();
-
   const sql = `
     SELECT
       s.id,
@@ -1580,6 +1655,64 @@ export async function searchTranscripts(
   });
 
   return rowsToObjects<TranscriptSearchRow>(result.rows);
+}
+
+export async function searchTranscripts(
+  query: string,
+  limit = 30,
+  offset = 0
+): Promise<TranscriptSearchRow[]> {
+  // Check if query is a scripture reference - if so, expand abbreviations
+  // e.g., "Rom 12:2" → search for "Romans 12" in transcripts
+  const scriptureRef = parseScriptureQuery(query);
+  let searchQuery = query;
+
+  if (scriptureRef) {
+    // Build expanded search term with full book name
+    searchQuery = scriptureRef.book;
+    if (scriptureRef.chapter) {
+      searchQuery += ` ${scriptureRef.chapter}`;
+    }
+  }
+
+  const searchTerm = `%${searchQuery}%`;
+  const lowerQuery = searchQuery.toLowerCase();
+
+  const needsVerseFiltering = Boolean(scriptureRef?.chapter && scriptureRef?.verse !== undefined);
+  if (!needsVerseFiltering || !scriptureRef) {
+    return fetchTranscriptSearchBatch(lowerQuery, searchTerm, limit, offset);
+  }
+
+  const filteredResults: TranscriptSearchRow[] = [];
+  let matchedBeforeOffset = 0;
+  let rawOffset = 0;
+  const batchSize = Math.max(limit * 4, 100);
+  const maxScanRows = 4000;
+
+  while (filteredResults.length < limit && rawOffset < maxScanRows) {
+    const batch = await fetchTranscriptSearchBatch(lowerQuery, searchTerm, batchSize, rawOffset);
+    if (batch.length === 0) break;
+
+    for (const row of batch) {
+      if (!transcriptContainsScriptureVerse(row.transcript_text, scriptureRef)) {
+        continue;
+      }
+
+      if (matchedBeforeOffset < offset) {
+        matchedBeforeOffset += 1;
+        continue;
+      }
+
+      filteredResults.push(row);
+      if (filteredResults.length >= limit) {
+        break;
+      }
+    }
+
+    rawOffset += batch.length;
+  }
+
+  return filteredResults;
 }
 
 export default client;

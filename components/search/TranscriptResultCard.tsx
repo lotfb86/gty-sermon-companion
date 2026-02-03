@@ -30,25 +30,30 @@ export default function TranscriptResultCard({ result, query }: TranscriptResult
               {result.title}
             </h3>
             <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)] mt-0.5">
-              {result.verse && (
-                <span className="text-[var(--accent)] font-medium">{result.verse}</span>
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)]/50 text-[var(--text-tertiary)]">
+                Code {result.sermon_code}
+              </span>
+              {result.date_preached && (
+                <span>
+                  {new Date(result.date_preached).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </span>
               )}
               {result.series_name && (
-                <span className="line-clamp-1">{result.series_name}</span>
-              )}
-              {result.date_preached && (
                 <>
                   <span>·</span>
-                  <span>
-                    {new Date(result.date_preached).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </span>
+                  <span className="line-clamp-1">{result.series_name}</span>
                 </>
               )}
             </div>
+            {result.verse && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)] mt-1">
+                <span className="text-[var(--accent)] font-medium">Primary Text: {result.verse}</span>
+              </div>
+            )}
           </div>
         </div>
 

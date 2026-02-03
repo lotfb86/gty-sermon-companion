@@ -132,7 +132,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
     : null;
   const scriptureRef = parseScriptureQuery(query);
   const snippetQuery = scriptureRef
-    ? `${scriptureRef.book}${scriptureRef.chapter ? ` ${scriptureRef.chapter}` : ''}`
+    ? `${scriptureRef.book}${scriptureRef.chapter ? ` ${scriptureRef.chapter}` : ''}${scriptureRef.verse !== undefined ? `:${scriptureRef.verse}${scriptureRef.verseEnd !== undefined ? `-${scriptureRef.verseEnd}` : ''}` : ''}`
     : query;
 
   // Process transcript results: extract snippets, strip full text
