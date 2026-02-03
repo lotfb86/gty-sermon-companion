@@ -865,7 +865,7 @@ export async function getAllTopics() {
       FROM topics t
       LEFT JOIN sermon_topics st ON t.id = st.topic_id
       GROUP BY t.id
-      ORDER BY sermon_count DESC
+      ORDER BY LOWER(t.name) ASC
     `,
     args: [],
   });

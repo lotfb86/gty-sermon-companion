@@ -1,6 +1,14 @@
 import Link from 'next/link';
 import { getAllTopics } from '@/lib/db';
 import TopicSearch from '@/components/TopicSearch';
+import AlphabetNav from '@/components/AlphabetNav';
+
+/** Title-case a topic name: capitalize first letter of each word */
+function toTitleCase(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/(?:^|\s|[-/])\S/g, (match) => match.toUpperCase());
+}
 
 export default async function BrowseTopicsPage() {
   const topics = await getAllTopics();
@@ -8,21 +16,40 @@ export default async function BrowseTopicsPage() {
   // Pattern to detect scripture references masquerading as topics
   const scriptureRefPattern = /^(\d\s+)?(Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|Samuel|Kings|Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|Corinthians|Galatians|Ephesians|Philippians|Colossians|Thessalonians|Timothy|Titus|Philemon|Hebrews|James|Peter|Jude|Revelation)(\s+\d+.*)?$/i;
 
-  // Clean up topic names (trim whitespace) and filter out scripture references
-  const cleanTopics = topics.map((t) => ({
-    ...t,
-    name: t.name.trim(),
-  })).filter((t) => t.name.length > 0 && !scriptureRefPattern.test(t.name.trim()));
+  // Clean, filter, deduplicate, and normalize topics
+  const cleanTopics = topics
+    .map((t) => ({ ...t, name: t.name.trim() }))
+    .filter((t) => t.name.length > 0 && !scriptureRefPattern.test(t.name.trim()));
+
+  // Deduplicate: group by lowercase name, merge sermon counts, pick best ID
+  const deduped = (() => {
+    const map = new Map<string, { id: number; name: string; sermon_count: number }>();
+    for (const t of cleanTopics) {
+      const key = t.name.toLowerCase();
+      const existing = map.get(key);
+      if (existing) {
+        existing.sermon_count += t.sermon_count;
+      } else {
+        map.set(key, { id: t.id, name: toTitleCase(t.name), sermon_count: t.sermon_count });
+      }
+    }
+    return Array.from(map.values());
+  })();
+
+  // Sort alphabetically (case-insensitive)
+  deduped.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+  // Get the top 15 by sermon count for "Most Popular"
+  const mostPopular = [...deduped].sort((a, b) => b.sermon_count - a.sermon_count).slice(0, 15);
 
   // Group topics by first letter
-  const groupedTopics = cleanTopics.reduce((acc, topic) => {
-    const firstLetter = topic.name[0].toUpperCase();
-    if (!acc[firstLetter]) {
-      acc[firstLetter] = [];
-    }
-    acc[firstLetter].push(topic);
+  const groupedTopics = deduped.reduce((acc, topic) => {
+    const firstChar = topic.name[0]?.toUpperCase() || '#';
+    const letter = /[A-Z]/.test(firstChar) ? firstChar : '#';
+    if (!acc[letter]) acc[letter] = [];
+    acc[letter].push(topic);
     return acc;
-  }, {} as Record<string, typeof cleanTopics>);
+  }, {} as Record<string, typeof deduped>);
 
   const letters = Object.keys(groupedTopics).sort();
 
@@ -34,31 +61,34 @@ export default async function BrowseTopicsPage() {
           Browse by Topic
         </h1>
         <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">
-          {cleanTopics.length} topics
+          {deduped.length} topics
         </p>
       </header>
 
+      {/* Alphabet Quick-Nav */}
+      <AlphabetNav letters={letters} />
+
       <main className="px-4 py-4">
         {/* Topic Search */}
-        <TopicSearch topics={cleanTopics} />
+        <TopicSearch topics={deduped} />
 
         {/* Most Popular */}
         <section className="mb-6">
           <h2 className="font-serif text-lg font-semibold mb-4 text-[var(--text-primary)]">
             Most Popular
           </h2>
-            <div className="flex flex-wrap gap-2">
-              {cleanTopics.slice(0, 15).map((topic) => (
-                <Link
-                  key={topic.id}
-                  href={`/topics/${topic.id}`}
-                  className="tag text-sm"
-                >
-                  {topic.name} ({topic.sermon_count})
-                </Link>
-              ))}
-            </div>
-          </section>
+          <div className="flex flex-wrap gap-2">
+            {mostPopular.map((topic) => (
+              <Link
+                key={topic.id}
+                href={`/topics/${topic.id}`}
+                className="tag text-sm"
+              >
+                {topic.name} ({topic.sermon_count})
+              </Link>
+            ))}
+          </div>
+        </section>
 
         {/* All Topics A-Z */}
         <section>
@@ -68,12 +98,12 @@ export default async function BrowseTopicsPage() {
 
           <div className="space-y-6">
             {letters.map((letter) => (
-              <div key={letter}>
+              <div key={letter} id={`topic-letter-${letter}`}>
                 <h3 className="font-serif text-2xl font-semibold text-[var(--accent)] mb-3">
                   {letter}
                 </h3>
-                  <div className="grid gap-2">
-                    {groupedTopics[letter].map((topic) => (
+                <div className="grid gap-2">
+                  {groupedTopics[letter].map((topic) => (
                     <Link
                       key={topic.id}
                       href={`/topics/${topic.id}`}
