@@ -284,46 +284,215 @@ const BIBLE_BOOKS_SEARCH = [
   'Job', 'Jude', 'Titus',
 ];
 
+// Bible book abbreviation mapping (lowercase key → canonical name)
+const BOOK_ABBREVIATIONS: Record<string, string> = {
+  // Genesis
+  'gen': 'Genesis', 'ge': 'Genesis', 'gn': 'Genesis',
+  // Exodus
+  'ex': 'Exodus', 'exod': 'Exodus', 'exo': 'Exodus',
+  // Leviticus
+  'lev': 'Leviticus', 'le': 'Leviticus', 'lv': 'Leviticus',
+  // Numbers
+  'num': 'Numbers', 'nu': 'Numbers', 'nm': 'Numbers', 'nb': 'Numbers',
+  // Deuteronomy
+  'deut': 'Deuteronomy', 'de': 'Deuteronomy', 'dt': 'Deuteronomy',
+  // Joshua
+  'josh': 'Joshua', 'jos': 'Joshua', 'jsh': 'Joshua',
+  // Judges
+  'judg': 'Judges', 'jdg': 'Judges', 'jg': 'Judges', 'jdgs': 'Judges',
+  // Ruth
+  'ru': 'Ruth', 'rth': 'Ruth',
+  // 1 Samuel
+  '1sam': '1 Samuel', '1 sam': '1 Samuel', '1sa': '1 Samuel', '1 sa': '1 Samuel', '1s': '1 Samuel',
+  // 2 Samuel
+  '2sam': '2 Samuel', '2 sam': '2 Samuel', '2sa': '2 Samuel', '2 sa': '2 Samuel', '2s': '2 Samuel',
+  // 1 Kings
+  '1kgs': '1 Kings', '1 kgs': '1 Kings', '1ki': '1 Kings', '1 ki': '1 Kings', '1k': '1 Kings',
+  // 2 Kings
+  '2kgs': '2 Kings', '2 kgs': '2 Kings', '2ki': '2 Kings', '2 ki': '2 Kings', '2k': '2 Kings',
+  // 1 Chronicles
+  '1chr': '1 Chronicles', '1 chr': '1 Chronicles', '1ch': '1 Chronicles', '1 ch': '1 Chronicles',
+  // 2 Chronicles
+  '2chr': '2 Chronicles', '2 chr': '2 Chronicles', '2ch': '2 Chronicles', '2 ch': '2 Chronicles',
+  // Ezra
+  'ezr': 'Ezra',
+  // Nehemiah
+  'neh': 'Nehemiah', 'ne': 'Nehemiah',
+  // Esther
+  'est': 'Esther', 'esth': 'Esther', 'es': 'Esther',
+  // Job
+  'jb': 'Job',
+  // Psalms
+  'ps': 'Psalms', 'psa': 'Psalms', 'psm': 'Psalms', 'pss': 'Psalms', 'psalm': 'Psalms',
+  // Proverbs
+  'prov': 'Proverbs', 'pro': 'Proverbs', 'prv': 'Proverbs', 'pr': 'Proverbs',
+  // Ecclesiastes
+  'eccl': 'Ecclesiastes', 'ecc': 'Ecclesiastes', 'ec': 'Ecclesiastes', 'qoh': 'Ecclesiastes',
+  // Song of Solomon
+  'song': 'Song of Solomon', 'sos': 'Song of Solomon', 'ss': 'Song of Solomon', 'canticles': 'Song of Solomon',
+  // Isaiah
+  'isa': 'Isaiah', 'is': 'Isaiah',
+  // Jeremiah
+  'jer': 'Jeremiah', 'jr': 'Jeremiah',
+  // Lamentations
+  'lam': 'Lamentations', 'la': 'Lamentations',
+  // Ezekiel
+  'ezek': 'Ezekiel', 'eze': 'Ezekiel', 'ezk': 'Ezekiel',
+  // Daniel
+  'dan': 'Daniel', 'da': 'Daniel', 'dn': 'Daniel',
+  // Hosea
+  'hos': 'Hosea', 'ho': 'Hosea',
+  // Joel
+  'joe': 'Joel', 'jl': 'Joel',
+  // Amos
+  'am': 'Amos',
+  // Obadiah
+  'ob': 'Obadiah', 'obad': 'Obadiah',
+  // Jonah
+  'jon': 'Jonah', 'jnh': 'Jonah',
+  // Micah
+  'mic': 'Micah', 'mi': 'Micah',
+  // Nahum
+  'nah': 'Nahum', 'na': 'Nahum',
+  // Habakkuk
+  'hab': 'Habakkuk', 'hb': 'Habakkuk',
+  // Zephaniah
+  'zeph': 'Zephaniah', 'zep': 'Zephaniah', 'zp': 'Zephaniah',
+  // Haggai
+  'hag': 'Haggai', 'hg': 'Haggai',
+  // Zechariah
+  'zech': 'Zechariah', 'zec': 'Zechariah', 'zc': 'Zechariah',
+  // Malachi
+  'mal': 'Malachi', 'ml': 'Malachi',
+  // Matthew
+  'matt': 'Matthew', 'mat': 'Matthew', 'mt': 'Matthew',
+  // Mark
+  'mk': 'Mark', 'mr': 'Mark', 'mrk': 'Mark',
+  // Luke
+  'lk': 'Luke', 'lu': 'Luke', 'luk': 'Luke',
+  // John (Gospel)
+  'jn': 'John', 'jhn': 'John', 'joh': 'John',
+  // Acts
+  'ac': 'Acts', 'act': 'Acts',
+  // Romans
+  'rom': 'Romans', 'ro': 'Romans', 'rm': 'Romans',
+  // 1 Corinthians
+  '1cor': '1 Corinthians', '1 cor': '1 Corinthians', '1co': '1 Corinthians', '1 co': '1 Corinthians',
+  // 2 Corinthians
+  '2cor': '2 Corinthians', '2 cor': '2 Corinthians', '2co': '2 Corinthians', '2 co': '2 Corinthians',
+  // Galatians
+  'gal': 'Galatians', 'ga': 'Galatians',
+  // Ephesians
+  'eph': 'Ephesians', 'ep': 'Ephesians',
+  // Philippians
+  'phil': 'Philippians', 'php': 'Philippians', 'pp': 'Philippians',
+  // Colossians
+  'col': 'Colossians',
+  // 1 Thessalonians
+  '1thess': '1 Thessalonians', '1 thess': '1 Thessalonians', '1th': '1 Thessalonians', '1 th': '1 Thessalonians',
+  // 2 Thessalonians
+  '2thess': '2 Thessalonians', '2 thess': '2 Thessalonians', '2th': '2 Thessalonians', '2 th': '2 Thessalonians',
+  // 1 Timothy
+  '1tim': '1 Timothy', '1 tim': '1 Timothy', '1ti': '1 Timothy', '1 ti': '1 Timothy',
+  // 2 Timothy
+  '2tim': '2 Timothy', '2 tim': '2 Timothy', '2ti': '2 Timothy', '2 ti': '2 Timothy',
+  // Titus
+  'tit': 'Titus',
+  // Philemon
+  'phm': 'Philemon', 'phlm': 'Philemon', 'philem': 'Philemon', 'pm': 'Philemon',
+  // Hebrews
+  'heb': 'Hebrews', 'he': 'Hebrews',
+  // James
+  'jas': 'James', 'jm': 'James', 'jam': 'James',
+  // 1 Peter
+  '1pet': '1 Peter', '1 pet': '1 Peter', '1pe': '1 Peter', '1 pe': '1 Peter', '1pt': '1 Peter', '1 pt': '1 Peter', '1p': '1 Peter',
+  // 2 Peter
+  '2pet': '2 Peter', '2 pet': '2 Peter', '2pe': '2 Peter', '2 pe': '2 Peter', '2pt': '2 Peter', '2 pt': '2 Peter', '2p': '2 Peter',
+  // 1 John
+  '1jn': '1 John', '1 jn': '1 John', '1jo': '1 John', '1 jo': '1 John', '1john': '1 John', '1 john': '1 John', '1j': '1 John',
+  // 2 John
+  '2jn': '2 John', '2 jn': '2 John', '2jo': '2 John', '2 jo': '2 John', '2john': '2 John', '2 john': '2 John', '2j': '2 John',
+  // 3 John
+  '3jn': '3 John', '3 jn': '3 John', '3jo': '3 John', '3 jo': '3 John', '3john': '3 John', '3 john': '3 John', '3j': '3 John',
+  // Jude
+  'jud': 'Jude', 'jd': 'Jude',
+  // Revelation
+  'rev': 'Revelation', 're': 'Revelation', 'rv': 'Revelation', 'apoc': 'Revelation',
+};
+
+// Normalize a book name: try abbreviation lookup, then match against full names
+function normalizeBookName(input: string): string | null {
+  const normalized = input.toLowerCase().trim();
+
+  // Direct abbreviation lookup
+  if (BOOK_ABBREVIATIONS[normalized]) {
+    return BOOK_ABBREVIATIONS[normalized];
+  }
+
+  // Try exact match against full names (case-insensitive)
+  for (const book of BIBLE_BOOKS_SEARCH) {
+    if (book.toLowerCase() === normalized) {
+      return book;
+    }
+  }
+
+  return null;
+}
+
 // Detect if a search query is a scripture reference
 function parseScriptureQuery(query: string): { book: string; chapter?: number; verse?: number } | null {
   const trimmed = query.trim();
-  for (const book of BIBLE_BOOKS_SEARCH) {
-    const bookPattern = book.replace(/\s+/g, '\\s+');
 
-    if (trimmed.toLowerCase() === book.toLowerCase()) {
-      return { book };
-    }
+  // Pattern to extract potential book name and the rest (chapter/verse)
+  // Handles: "Rom", "Rom 12", "Rom 12:2", "1 Cor 13", "1Cor13:4", "Song of Solomon 2:1"
+  const match = trimmed.match(/^(\d?\s*[a-zA-Z][a-zA-Z\s]*?)(?:\s+|(?=\d))(.*)$/i);
 
-    const afterBookMatch = trimmed.match(new RegExp(`^${bookPattern}\\s+(.+)$`, 'i'));
-    if (!afterBookMatch) continue;
-
-    const rest = afterBookMatch[1].trim();
-
-    const chapterVerseWords = rest.match(/^chapter\s+(\d+)[\s,]+verse\s+(\d+)/i);
-    if (chapterVerseWords) {
-      return { book, chapter: parseInt(chapterVerseWords[1]), verse: parseInt(chapterVerseWords[2]) };
-    }
-
-    const chapterColonVerse = rest.match(/^chapter\s+(\d+):(\d+)/i);
-    if (chapterColonVerse) {
-      return { book, chapter: parseInt(chapterColonVerse[1]), verse: parseInt(chapterColonVerse[2]) };
-    }
-
-    const chapterOnly = rest.match(/^chapter\s+(\d+)$/i);
-    if (chapterOnly) {
-      return { book, chapter: parseInt(chapterOnly[1]) };
-    }
-
-    const standardWithVerse = rest.match(/^(\d+):(\d+)/);
-    if (standardWithVerse) {
-      return { book, chapter: parseInt(standardWithVerse[1]), verse: parseInt(standardWithVerse[2]) };
-    }
-
-    const chapterNum = rest.match(/^(\d+)$/);
-    if (chapterNum) {
-      return { book, chapter: parseInt(chapterNum[1]) };
-    }
+  if (!match) {
+    // Try as book-only query
+    const bookOnly = normalizeBookName(trimmed);
+    if (bookOnly) return { book: bookOnly };
+    return null;
   }
+
+  const [, bookPart, rest] = match;
+  const book = normalizeBookName(bookPart.trim());
+
+  if (!book) return null;
+  if (!rest || rest.trim() === '') return { book };
+
+  const restTrimmed = rest.trim();
+
+  // Parse chapter and verse from the rest
+  // "chapter 12 verse 2" or "chapter 12, verse 2"
+  const chapterVerseWords = restTrimmed.match(/^chapter\s+(\d+)[\s,]+verse\s+(\d+)/i);
+  if (chapterVerseWords) {
+    return { book, chapter: parseInt(chapterVerseWords[1]), verse: parseInt(chapterVerseWords[2]) };
+  }
+
+  // "chapter 12:2"
+  const chapterColonVerse = restTrimmed.match(/^chapter\s+(\d+):(\d+)/i);
+  if (chapterColonVerse) {
+    return { book, chapter: parseInt(chapterColonVerse[1]), verse: parseInt(chapterColonVerse[2]) };
+  }
+
+  // "chapter 12"
+  const chapterOnly = restTrimmed.match(/^chapter\s+(\d+)$/i);
+  if (chapterOnly) {
+    return { book, chapter: parseInt(chapterOnly[1]) };
+  }
+
+  // "12:2" or "12:2-5"
+  const standardWithVerse = restTrimmed.match(/^(\d+):(\d+)/);
+  if (standardWithVerse) {
+    return { book, chapter: parseInt(standardWithVerse[1]), verse: parseInt(standardWithVerse[2]) };
+  }
+
+  // "12" (chapter only)
+  const chapterNum = restTrimmed.match(/^(\d+)$/);
+  if (chapterNum) {
+    return { book, chapter: parseInt(chapterNum[1]) };
+  }
+
   return null;
 }
 
