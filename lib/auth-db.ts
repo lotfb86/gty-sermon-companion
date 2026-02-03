@@ -45,6 +45,20 @@ async function ensureTables() {
 
     CREATE INDEX IF NOT EXISTS idx_listening_user ON listening_history(user_id);
 
+    CREATE TABLE IF NOT EXISTS listening_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      sermon_code TEXT NOT NULL,
+      activity_date TEXT NOT NULL,
+      listened_seconds REAL NOT NULL DEFAULT 0,
+      sessions_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, sermon_code, activity_date)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_activity_user_date ON listening_activity(user_id, activity_date);
+    CREATE INDEX IF NOT EXISTS idx_activity_user_sermon ON listening_activity(user_id, sermon_code);
+
     CREATE TABLE IF NOT EXISTS listening_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -59,6 +73,49 @@ async function ensureTables() {
     CREATE INDEX IF NOT EXISTS idx_queue_user ON listening_queue(user_id);
     CREATE INDEX IF NOT EXISTS idx_queue_order ON listening_queue(user_id, position_in_queue);
   `);
+
+  // Lightweight migrations for older installs
+  const tableInfo = await client.execute({
+    sql: "PRAGMA table_info('listening_history')",
+    args: [],
+  });
+  const hasCompletedAt = tableInfo.rows.some((row) => String(row.name) === 'completed_at');
+  if (!hasCompletedAt) {
+    await client.execute({
+      sql: 'ALTER TABLE listening_history ADD COLUMN completed_at TEXT',
+      args: [],
+    });
+  }
+
+  await client.execute({
+    sql: `
+      UPDATE listening_history
+      SET completed_at = COALESCE(completed_at, last_played_at)
+      WHERE completed_at IS NULL
+        AND duration > 0
+        AND position >= duration * 0.9
+    `,
+    args: [],
+  });
+
+  // Backfill one activity row per sermon for legacy data (best-effort)
+  await client.execute({
+    sql: `
+      INSERT OR IGNORE INTO listening_activity (
+        user_id, sermon_code, activity_date, listened_seconds, sessions_count, updated_at
+      )
+      SELECT
+        user_id,
+        sermon_code,
+        substr(last_played_at, 1, 10),
+        CASE WHEN position > 0 THEN position ELSE 0 END,
+        1,
+        COALESCE(last_played_at, datetime('now'))
+      FROM listening_history
+      WHERE last_played_at IS NOT NULL
+    `,
+    args: [],
+  });
 
   tablesInitialized = true;
 }
@@ -233,6 +290,7 @@ export interface ListeningEntry {
   position: number;
   duration: number;
   last_played_at: string;
+  completed_at?: string | null;
 }
 
 export async function saveListeningPosition(
@@ -242,24 +300,90 @@ export async function saveListeningPosition(
   duration: number
 ): Promise<void> {
   await ensureTables();
+  const safePosition = Number.isFinite(position) ? Math.max(0, position) : 0;
+  const safeDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
+
+  const existingResult = await client.execute({
+    sql: `
+      SELECT position, duration, last_played_at
+      FROM listening_history
+      WHERE user_id = ? AND sermon_code = ?
+      LIMIT 1
+    `,
+    args: [userId, sermonCode],
+  });
+
+  const existing = existingResult.rows[0];
+  const prevPosition = existing ? Number(existing.position || 0) : 0;
+  const prevPlayedAt = existing ? String(existing.last_played_at || '') : '';
+
+  // Estimate newly listened seconds from forward progress only.
+  const forwardDelta = safePosition > prevPosition ? safePosition - prevPosition : 0;
+  let creditedSeconds = 0;
+
+  if (!existing) {
+    // First sync point can be a restore/seek. Credit conservatively.
+    creditedSeconds = Math.min(safePosition, 30);
+  } else if (forwardDelta > 0) {
+    const nowMs = Date.now();
+    const prevMs = Date.parse(prevPlayedAt);
+    const elapsedSeconds = Number.isFinite(prevMs) ? Math.max(0, (nowMs - prevMs) / 1000) : 0;
+    const maxCreditable = Math.max(30, elapsedSeconds * 1.75 + 10);
+    creditedSeconds = forwardDelta <= maxCreditable ? forwardDelta : 0;
+  }
+
+  const isCompleted = safeDuration > 0 && safePosition / safeDuration >= 0.9;
+  const normalizedPosition = safeDuration > 0 ? Math.min(safePosition, safeDuration) : safePosition;
+
   await client.execute({
     sql: `
       INSERT INTO listening_history (user_id, sermon_code, position, duration, last_played_at)
       VALUES (?, ?, ?, ?, datetime('now'))
       ON CONFLICT(user_id, sermon_code) DO UPDATE SET
         position = excluded.position,
-        duration = excluded.duration,
+        duration = CASE
+          WHEN excluded.duration > 0 THEN excluded.duration
+          ELSE listening_history.duration
+        END,
         last_played_at = datetime('now')
     `,
-    args: [userId, sermonCode, position, duration],
+    args: [userId, sermonCode, normalizedPosition, safeDuration],
   });
+
+  if (isCompleted) {
+    await client.execute({
+      sql: `
+        UPDATE listening_history
+        SET completed_at = COALESCE(completed_at, datetime('now'))
+        WHERE user_id = ? AND sermon_code = ?
+      `,
+      args: [userId, sermonCode],
+    });
+  }
+
+  if (creditedSeconds > 0) {
+    const activityDate = new Date().toISOString().slice(0, 10);
+    await client.execute({
+      sql: `
+        INSERT INTO listening_activity (
+          user_id, sermon_code, activity_date, listened_seconds, sessions_count, updated_at
+        )
+        VALUES (?, ?, ?, ?, 1, datetime('now'))
+        ON CONFLICT(user_id, sermon_code, activity_date) DO UPDATE SET
+          listened_seconds = listening_activity.listened_seconds + excluded.listened_seconds,
+          sessions_count = listening_activity.sessions_count + 1,
+          updated_at = datetime('now')
+      `,
+      args: [userId, sermonCode, activityDate, creditedSeconds],
+    });
+  }
 }
 
 export async function getListeningHistory(userId: number): Promise<ListeningEntry[]> {
   await ensureTables();
   const result = await client.execute({
     sql: `
-      SELECT sermon_code, position, duration, last_played_at
+      SELECT sermon_code, position, duration, last_played_at, completed_at
       FROM listening_history
       WHERE user_id = ?
       ORDER BY last_played_at DESC
@@ -273,13 +397,348 @@ export async function getListeningPosition(userId: number, sermonCode: string): 
   await ensureTables();
   const result = await client.execute({
     sql: `
-      SELECT sermon_code, position, duration, last_played_at
+      SELECT sermon_code, position, duration, last_played_at, completed_at
       FROM listening_history
       WHERE user_id = ? AND sermon_code = ?
     `,
     args: [userId, sermonCode],
   });
   return result.rows.length > 0 ? (result.rows[0] as unknown as ListeningEntry) : null;
+}
+
+export type ListeningRange = '7d' | '30d' | '90d' | '180d' | '365d' | 'all';
+
+export interface ListeningStatsSummary {
+  range: ListeningRange;
+  hoursListened: number;
+  seriesCompleted: number;
+  streak: number;
+  sermonsListened: number;
+  activeDays: number;
+}
+
+export interface ListeningHistoryItem {
+  sermon_code: string;
+  title: string;
+  audio_url?: string | null;
+  date_preached?: string | null;
+  series_name?: string | null;
+  position: number;
+  duration: number;
+  last_played_at: string;
+  completed_at?: string | null;
+  progress_percent: number;
+  is_completed: boolean;
+  listen_dates: string[];
+  listened_seconds: number;
+}
+
+export interface ListeningHistoryPage {
+  range: ListeningRange;
+  items: ListeningHistoryItem[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+function normalizeRange(input: string | null | undefined): ListeningRange {
+  const valid: ListeningRange[] = ['7d', '30d', '90d', '180d', '365d', 'all'];
+  if (input && valid.includes(input as ListeningRange)) {
+    return input as ListeningRange;
+  }
+  return '30d';
+}
+
+function getRangeStartDate(range: ListeningRange): string | null {
+  if (range === 'all') return null;
+
+  const rangeDays: Record<Exclude<ListeningRange, 'all'>, number> = {
+    '7d': 7,
+    '30d': 30,
+    '90d': 90,
+    '180d': 180,
+    '365d': 365,
+  };
+
+  const days = rangeDays[range];
+  const start = new Date();
+  // Include today in the selected window
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  return start.toISOString().slice(0, 10);
+}
+
+function calculateStreak(activityDates: string[]): number {
+  if (activityDates.length === 0) return 0;
+
+  const uniqueSorted = Array.from(new Set(activityDates)).sort((a, b) => b.localeCompare(a));
+  if (uniqueSorted.length === 0) return 0;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterdayDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (uniqueSorted[0] !== today && uniqueSorted[0] !== yesterdayDate) {
+    return 0;
+  }
+
+  let streak = 1;
+  const expected = new Date(uniqueSorted[0]);
+  expected.setUTCDate(expected.getUTCDate() - 1);
+
+  for (let i = 1; i < uniqueSorted.length; i++) {
+    const expectedStr = expected.toISOString().slice(0, 10);
+    if (uniqueSorted[i] !== expectedStr) break;
+    streak++;
+    expected.setUTCDate(expected.getUTCDate() - 1);
+  }
+
+  return streak;
+}
+
+export async function getListeningStatsSummary(
+  userId: number,
+  rawRange?: string
+): Promise<ListeningStatsSummary> {
+  await ensureTables();
+  const range = normalizeRange(rawRange);
+  const startDate = getRangeStartDate(range);
+
+  const statsArgs: (number | string)[] = [userId];
+  let statsRangeWhere = '';
+  if (startDate) {
+    statsRangeWhere = 'AND activity_date >= ?';
+    statsArgs.push(startDate);
+  }
+
+  const usageResult = await client.execute({
+    sql: `
+      SELECT
+        COALESCE(SUM(listened_seconds), 0) as total_seconds,
+        COUNT(DISTINCT sermon_code) as sermons_listened,
+        COUNT(DISTINCT activity_date) as active_days
+      FROM listening_activity
+      WHERE user_id = ?
+      ${statsRangeWhere}
+    `,
+    args: statsArgs,
+  });
+
+  const activityDaysResult = await client.execute({
+    sql: `
+      SELECT DISTINCT activity_date
+      FROM listening_activity
+      WHERE user_id = ?
+      ${statsRangeWhere}
+      ORDER BY activity_date DESC
+    `,
+    args: statsArgs,
+  });
+  const activityDays = activityDaysResult.rows.map((row) => String(row.activity_date));
+
+  const seriesArgs: (number | string)[] = [userId];
+  let seriesRangeWhere = '';
+  if (startDate) {
+    seriesRangeWhere = 'AND date(sc.series_completed_at) >= date(?)';
+    seriesArgs.push(startDate);
+  }
+
+  const seriesResult = await client.execute({
+    sql: `
+      WITH series_totals AS (
+        SELECT series_id, COUNT(*) as total_sermons
+        FROM sermons
+        WHERE series_id IS NOT NULL
+          AND title != 'Sermon Not Found'
+        GROUP BY series_id
+      ),
+      series_user_completed AS (
+        SELECT
+          s.series_id,
+          COUNT(DISTINCT lh.sermon_code) as completed_sermons,
+          MAX(lh.completed_at) as series_completed_at
+        FROM listening_history lh
+        JOIN sermons s ON s.sermon_code = lh.sermon_code
+        WHERE lh.user_id = ?
+          AND lh.completed_at IS NOT NULL
+          AND s.series_id IS NOT NULL
+          AND s.title != 'Sermon Not Found'
+        GROUP BY s.series_id
+      )
+      SELECT COUNT(*) as series_completed
+      FROM series_user_completed sc
+      JOIN series_totals st ON st.series_id = sc.series_id
+      WHERE sc.completed_sermons >= st.total_sermons
+      ${seriesRangeWhere}
+    `,
+    args: seriesArgs,
+  });
+
+  const usageRow = usageResult.rows[0];
+  const totalSeconds = Number(usageRow?.total_seconds || 0);
+  const sermonsListened = Number(usageRow?.sermons_listened || 0);
+  const activeDays = Number(usageRow?.active_days || 0);
+  const seriesCompleted = Number(seriesResult.rows[0]?.series_completed || 0);
+
+  return {
+    range,
+    hoursListened: Math.round((totalSeconds / 3600) * 10) / 10,
+    seriesCompleted,
+    streak: calculateStreak(activityDays),
+    sermonsListened,
+    activeDays,
+  };
+}
+
+export async function getListeningHistoryPage(
+  userId: number,
+  rawRange?: string,
+  limit = 30,
+  offset = 0
+): Promise<ListeningHistoryPage> {
+  await ensureTables();
+  const range = normalizeRange(rawRange);
+  const startDate = getRangeStartDate(range);
+  const safeLimit = Math.max(1, Math.min(100, Number.isFinite(limit) ? limit : 30));
+  const safeOffset = Math.max(0, Number.isFinite(offset) ? offset : 0);
+
+  const countArgs: (number | string)[] = [userId];
+  let rangeExistsClause = '';
+  if (startDate) {
+    rangeExistsClause = 'AND la.activity_date >= ?';
+    countArgs.push(startDate);
+  }
+
+  const totalResult = await client.execute({
+    sql: `
+      SELECT COUNT(*) as total
+      FROM listening_history lh
+      JOIN sermons s ON s.sermon_code = lh.sermon_code
+      WHERE lh.user_id = ?
+        AND s.title != 'Sermon Not Found'
+        AND EXISTS (
+          SELECT 1
+          FROM listening_activity la
+          WHERE la.user_id = lh.user_id
+            AND la.sermon_code = lh.sermon_code
+            ${rangeExistsClause}
+        )
+    `,
+    args: countArgs,
+  });
+  const total = Number(totalResult.rows[0]?.total || 0);
+
+  const rowsArgs: (number | string)[] = [userId];
+  let rowsExistsClause = '';
+  if (startDate) {
+    rowsExistsClause = 'AND la.activity_date >= ?';
+    rowsArgs.push(startDate);
+  }
+  rowsArgs.push(safeLimit, safeOffset);
+
+  const rowsResult = await client.execute({
+    sql: `
+      SELECT
+        lh.sermon_code,
+        lh.position,
+        lh.duration,
+        lh.last_played_at,
+        lh.completed_at,
+        s.title,
+        s.audio_url,
+        s.date_preached,
+        se.name as series_name
+      FROM listening_history lh
+      JOIN sermons s ON s.sermon_code = lh.sermon_code
+      LEFT JOIN series se ON se.id = s.series_id
+      WHERE lh.user_id = ?
+        AND s.title != 'Sermon Not Found'
+        AND EXISTS (
+          SELECT 1
+          FROM listening_activity la
+          WHERE la.user_id = lh.user_id
+            AND la.sermon_code = lh.sermon_code
+            ${rowsExistsClause}
+        )
+      ORDER BY lh.last_played_at DESC
+      LIMIT ? OFFSET ?
+    `,
+    args: rowsArgs,
+  });
+
+  const sermonCodes = rowsResult.rows.map((row) => String(row.sermon_code));
+  const datesBySermon = new Map<string, string[]>();
+  const listenedSecondsBySermon = new Map<string, number>();
+
+  if (sermonCodes.length > 0) {
+    const placeholders = sermonCodes.map(() => '?').join(', ');
+    const activityArgs: (number | string)[] = [userId, ...sermonCodes];
+    let activityRangeClause = '';
+    if (startDate) {
+      activityRangeClause = 'AND activity_date >= ?';
+      activityArgs.push(startDate);
+    }
+
+    const activityRows = await client.execute({
+      sql: `
+        SELECT sermon_code, activity_date, listened_seconds
+        FROM listening_activity
+        WHERE user_id = ?
+          AND sermon_code IN (${placeholders})
+          ${activityRangeClause}
+        ORDER BY activity_date DESC
+      `,
+      args: activityArgs,
+    });
+
+    for (const row of activityRows.rows) {
+      const sermonCode = String(row.sermon_code);
+      const activityDate = String(row.activity_date);
+      const listenedSeconds = Number(row.listened_seconds || 0);
+
+      const existingDates = datesBySermon.get(sermonCode) || [];
+      if (!existingDates.includes(activityDate)) {
+        existingDates.push(activityDate);
+        datesBySermon.set(sermonCode, existingDates);
+      }
+
+      listenedSecondsBySermon.set(
+        sermonCode,
+        (listenedSecondsBySermon.get(sermonCode) || 0) + listenedSeconds
+      );
+    }
+  }
+
+  const items: ListeningHistoryItem[] = rowsResult.rows.map((row) => {
+    const sermonCode = String(row.sermon_code);
+    const position = Number(row.position || 0);
+    const duration = Number(row.duration || 0);
+    const rawProgress = duration > 0 ? (position / duration) * 100 : 0;
+    const isCompleted = Boolean(row.completed_at) || rawProgress >= 90;
+
+    return {
+      sermon_code: sermonCode,
+      title: String(row.title || ''),
+      audio_url: row.audio_url ? String(row.audio_url) : null,
+      date_preached: row.date_preached ? String(row.date_preached) : null,
+      series_name: row.series_name ? String(row.series_name) : null,
+      position,
+      duration,
+      last_played_at: String(row.last_played_at || ''),
+      completed_at: row.completed_at ? String(row.completed_at) : null,
+      progress_percent: isCompleted ? 100 : Math.max(0, Math.min(100, rawProgress)),
+      is_completed: isCompleted,
+      listen_dates: datesBySermon.get(sermonCode) || [],
+      listened_seconds: listenedSecondsBySermon.get(sermonCode) || 0,
+    };
+  });
+
+  return {
+    range,
+    items,
+    total,
+    offset: safeOffset,
+    limit: safeLimit,
+    hasMore: safeOffset + items.length < total,
+  };
 }
 
 // ============ Listening Queue Functions ============

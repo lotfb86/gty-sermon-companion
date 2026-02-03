@@ -19,6 +19,14 @@ interface ListeningEntry {
   position: number;
   duration: number;
   progress: number;
+  lastPlayed: number;
+}
+
+interface HistoryApiEntry {
+  sermon_code: string;
+  position: number;
+  duration?: number;
+  last_played_at?: string;
 }
 
 export default function RecentlyCompleted({ allSermons }: { allSermons: SermonData[] }) {
@@ -36,12 +44,13 @@ export default function RecentlyCompleted({ allSermons }: { allSermons: SermonDa
           if (res.ok) {
             const data = await res.json();
             items = (data.history || [])
-              .map((h: any) => {
+              .map((h: HistoryApiEntry) => {
                 const sermon = allSermons.find(s => s.sermon_code === h.sermon_code);
                 if (!sermon) return null;
                 const dur = h.duration || sermon.duration || 0;
                 const progress = dur > 0 ? Math.min(100, (h.position / dur) * 100) : 0;
-                return { sermon, position: h.position, duration: dur, progress };
+                const lastPlayed = h.last_played_at ? new Date(h.last_played_at).getTime() : 0;
+                return { sermon, position: h.position, duration: dur, progress, lastPlayed };
               })
               .filter(Boolean) as ListeningEntry[];
           }
@@ -59,15 +68,17 @@ export default function RecentlyCompleted({ allSermons }: { allSermons: SermonDa
               if (sermon) {
                 const duration = sermon.duration || 0;
                 const progress = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
-                items.push({ sermon, position, duration, progress });
+                const lastPlayedStr = localStorage.getItem(`sermon-${code}-lastPlayed`);
+                const lastPlayed = lastPlayedStr ? parseInt(lastPlayedStr, 10) : 0;
+                items.push({ sermon, position, duration, progress, lastPlayed });
               }
             }
           }
         }
       }
 
-      // Only completed (>= 95%)
-      const comp = items.filter(e => e.progress >= 95).sort((a, b) => b.position - a.position);
+      // Only completed (>= 90%)
+      const comp = items.filter(e => e.progress >= 90).sort((a, b) => b.lastPlayed - a.lastPlayed);
       setEntries(comp);
       setLoaded(true);
     }

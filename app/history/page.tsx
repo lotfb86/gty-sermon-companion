@@ -1,11 +1,8 @@
-import { getAllSermons } from '@/lib/db';
 import HistoryContent from './HistoryContent';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HistoryPage() {
-  const allSermons = await getAllSermons(500, 0);
-
   return (
     <div className="pb-32 animate-fade-in">
       {/* Header */}
@@ -17,7 +14,7 @@ export default async function HistoryPage() {
       </header>
 
       <main className="px-4 py-4 space-y-5">
-        <HistoryContent allSermons={allSermons} />
+        <HistoryContent />
       </main>
     </div>
   );

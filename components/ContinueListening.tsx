@@ -23,6 +23,13 @@ interface ListeningEntry {
   lastPlayed: number;
 }
 
+interface HistoryApiEntry {
+  sermon_code: string;
+  position: number;
+  duration?: number;
+  last_played_at?: string;
+}
+
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
@@ -44,12 +51,12 @@ export default function ContinueListening({ allSermons }: { allSermons: SermonDa
           if (res.ok) {
             const data = await res.json();
             items = (data.history || [])
-              .map((h: any) => {
+              .map((h: HistoryApiEntry) => {
                 const sermon = allSermons.find(s => s.sermon_code === h.sermon_code);
                 if (!sermon) return null;
                 const dur = h.duration || sermon.duration || 0;
                 const progress = dur > 0 ? Math.min(100, (h.position / dur) * 100) : 0;
-                const lastPlayed = h.updated_at ? new Date(h.updated_at).getTime() : 0;
+                const lastPlayed = h.last_played_at ? new Date(h.last_played_at).getTime() : 0;
                 return { sermon, position: h.position, duration: dur, progress, lastPlayed };
               })
               .filter(Boolean) as ListeningEntry[];
@@ -77,8 +84,8 @@ export default function ContinueListening({ allSermons }: { allSermons: SermonDa
         }
       }
 
-      // Only in-progress (< 95%), sorted by most recently played
-      const inProg = items.filter(e => e.progress < 95).sort((a, b) => b.lastPlayed - a.lastPlayed);
+      // Only in-progress (< 90%), sorted by most recently played
+      const inProg = items.filter(e => e.progress < 90).sort((a, b) => b.lastPlayed - a.lastPlayed);
       setEntries(inProg);
       setLoaded(true);
     }
