@@ -87,6 +87,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const lastServerSync = useRef<number>(0);
   const lastQueueSync = useRef<number>(0);
 
+  // Ref to signal that we want to auto-play once audio metadata is loaded
+  const pendingPlayRef = useRef<boolean>(false);
+
   // ============ Position Sync ============
 
   const syncToServer = useCallback((sermonCode: string, position: number, dur: number) => {
@@ -102,15 +105,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }).catch(() => {});
   }, [user]);
 
-  // Load saved position from localStorage
-  useEffect(() => {
-    if (currentSermon && audioRef.current) {
-      const savedPosition = localStorage.getItem(`sermon-${currentSermon.code}-position`);
-      if (savedPosition) {
-        audioRef.current.currentTime = parseFloat(savedPosition);
-      }
-    }
-  }, [currentSermon]);
+  // Position restore is handled in handleLoadedMetadata (not here)
+  // to avoid race conditions with audio element src changes.
 
   // Save position periodically
   useEffect(() => {
@@ -219,6 +215,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // ============ Playback Controls ============
 
   const playSermonFromQueue = useCallback((item: QueueItem) => {
+    pendingPlayRef.current = true;
     setCurrentSermon({
       code: item.sermonCode,
       title: item.title,
@@ -226,12 +223,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       book: item.book,
       verse: item.verse,
     });
-    setTimeout(() => {
-      if (audioRef.current) {
-        audioRef.current.play();
-        setIsPlaying(true);
-      }
-    }, 100);
+    // No setTimeout — handleLoadedMetadata will restore position and start playback.
   }, []);
 
   const play = (sermon: { code: string; title: string; audioUrl: string; book?: string; verse?: string }) => {
@@ -254,11 +246,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     });
     setCurrentQueueIndex(0);
 
-    // If same sermon, just play
+    // If same sermon, just resume playback
     if (currentSermon && currentSermon.code === sermon.code) {
       audioRef.current?.play();
       setIsPlaying(true);
     } else {
+      // Different sermon — set pending play flag, then change sermon.
+      // handleLoadedMetadata will restore saved position and start playback.
+      pendingPlayRef.current = true;
       setCurrentSermon({
         code: sermon.code,
         title: sermon.title,
@@ -266,12 +261,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         book: sermon.book,
         verse: sermon.verse,
       });
-      setTimeout(() => {
-        if (audioRef.current) {
-          audioRef.current.play();
-          setIsPlaying(true);
-        }
-      }, 100);
     }
   };
 
@@ -419,11 +408,30 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleLoadedMetadata = () => {
+  const handleLoadedMetadata = useCallback(() => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
+
+      // Restore saved position — safe now that metadata is loaded
+      if (currentSermon) {
+        const savedPosition = localStorage.getItem(`sermon-${currentSermon.code}-position`);
+        if (savedPosition) {
+          const pos = parseFloat(savedPosition);
+          // Only restore if position is meaningful (not at the very end)
+          if (pos > 0 && pos < audioRef.current.duration - 1) {
+            audioRef.current.currentTime = pos;
+          }
+        }
+      }
+
+      // Start playback if requested
+      if (pendingPlayRef.current) {
+        pendingPlayRef.current = false;
+        audioRef.current.play();
+        setIsPlaying(true);
+      }
     }
-  };
+  }, [currentSermon]);
 
   const handleEnded = useCallback(() => {
     // Save final position
