@@ -16,19 +16,23 @@ export default async function BrowseTopicsPage() {
   // Pattern to detect scripture references masquerading as topics
   const scriptureRefPattern = /^(\d\s+)?(Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|Samuel|Kings|Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|Corinthians|Galatians|Ephesians|Philippians|Colossians|Thessalonians|Timothy|Titus|Philemon|Hebrews|James|Peter|Jude|Revelation)(\s+\d+.*)?$/i;
 
-  // Clean, filter, deduplicate, and normalize topics
+  // Clean and filter topics
   const cleanTopics = topics
     .map((t) => ({ ...t, name: t.name.trim() }))
     .filter((t) => t.name.length > 0 && !scriptureRefPattern.test(t.name.trim()));
 
-  // Deduplicate: group by lowercase name, merge sermon counts, pick best ID
+  // Deduplicate: group by lowercase name, keep the topic with the highest sermon count
+  // (don't sum counts, as each ID links to its own sermons)
   const deduped = (() => {
     const map = new Map<string, { id: number; name: string; sermon_count: number }>();
     for (const t of cleanTopics) {
       const key = t.name.toLowerCase();
       const existing = map.get(key);
       if (existing) {
-        existing.sermon_count += t.sermon_count;
+        // Keep the one with more sermons
+        if (t.sermon_count > existing.sermon_count) {
+          map.set(key, { id: t.id, name: toTitleCase(t.name), sermon_count: t.sermon_count });
+        }
       } else {
         map.set(key, { id: t.id, name: toTitleCase(t.name), sermon_count: t.sermon_count });
       }
@@ -36,20 +40,22 @@ export default async function BrowseTopicsPage() {
     return Array.from(map.values());
   })();
 
-  // Sort alphabetically (case-insensitive)
-  deduped.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  // Filter out topics with 0 sermons and sort alphabetically
+  const displayTopics = deduped
+    .filter((t) => t.sermon_count > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
   // Get the top 15 by sermon count for "Most Popular"
-  const mostPopular = [...deduped].sort((a, b) => b.sermon_count - a.sermon_count).slice(0, 15);
+  const mostPopular = [...displayTopics].sort((a, b) => b.sermon_count - a.sermon_count).slice(0, 15);
 
   // Group topics by first letter
-  const groupedTopics = deduped.reduce((acc, topic) => {
+  const groupedTopics = displayTopics.reduce((acc, topic) => {
     const firstChar = topic.name[0]?.toUpperCase() || '#';
     const letter = /[A-Z]/.test(firstChar) ? firstChar : '#';
     if (!acc[letter]) acc[letter] = [];
     acc[letter].push(topic);
     return acc;
-  }, {} as Record<string, typeof deduped>);
+  }, {} as Record<string, typeof displayTopics>);
 
   const letters = Object.keys(groupedTopics).sort();
 
@@ -61,7 +67,7 @@ export default async function BrowseTopicsPage() {
           Browse by Topic
         </h1>
         <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">
-          {deduped.length} topics
+          {displayTopics.length} topics
         </p>
       </header>
 
@@ -70,7 +76,7 @@ export default async function BrowseTopicsPage() {
 
       <main className="px-4 py-4">
         {/* Topic Search */}
-        <TopicSearch topics={deduped} />
+        <TopicSearch topics={displayTopics} />
 
         {/* Most Popular */}
         <section className="mb-6">
