@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getSermonByCode, getTopicsForSermon, getScriptureReferencesForSermon, getSeriesById, getAdjacentSermonsInSeries, getRelatedSermons } from '@/lib/db';
 import AudioPlayer from '@/components/AudioPlayer';
 import PlayButton from '@/components/PlayButton';
-import { Calendar, Clock, BookOpen, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, BookOpen, ExternalLink, Download, ChevronDown } from 'lucide-react';
 
 import SermonTabs from '@/components/sermon/SermonTabs';
 import ExpandableSummary from '@/components/sermon/ExpandableSummary';
@@ -17,6 +17,7 @@ import SeriesNavigation from '@/components/sermon/SeriesNavigation';
 import RelatedSermons from '@/components/sermon/RelatedSermons';
 import AddToQueueButton from '@/components/AddToQueueButton';
 import TranscriptWithHighlight from '@/components/sermon/TranscriptWithHighlight';
+import { cleanTranscriptText } from '@/lib/transcript-export';
 
 export default async function SermonDetailPage({
   params,
@@ -59,10 +60,12 @@ export default async function SermonDetailPage({
     : { prev: undefined, next: undefined };
 
   // Parse metadata
+  // We intentionally keep metadata loose because this JSON payload is heterogeneous.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let metadata: any = null;
   try {
     metadata = sermon.llm_metadata ? JSON.parse(sermon.llm_metadata) : null;
-  } catch (e) {
+  } catch {
     // ignore
   }
 
@@ -269,30 +272,7 @@ export default async function SermonDetailPage({
   );
 
   // TRANSCRIPT TAB
-  // Clean transcript text (shared logic for both highlighted and plain rendering)
-  const cleanedTranscript = (() => {
-    let text = sermon.transcript_text || '';
-    if (!text) return '';
-    const junkPatterns = [
-      /^.*?(VIDEO SERMON|AUDIO SERMON).*$/gim,
-      /^(WATCH NOW|ADD TO WATCHLIST|SHARE|DOWNLOAD|TRANSCRIPT|PRINT|SERMONS ARCHIVE|RESET|CD|DVD|MP3|MP4)\s*$/gim,
-      /^[A-Z]\s*$/gm,
-    ];
-    for (const pattern of junkPatterns) {
-      text = text.replace(pattern, '');
-    }
-    const lines = text.split('\n').filter(l => l.trim().length > 0);
-    let startIdx = 0;
-    for (let i = 0; i < Math.min(lines.length, 20); i++) {
-      const line = lines[i].trim();
-      if (line.length > 60 && /[a-z]/.test(line) && /[.,:;]/.test(line)) {
-        startIdx = i;
-        break;
-      }
-    }
-    text = lines.slice(startIdx).join('\n');
-    return text.replace(/\n{3,}/g, '\n\n').trim();
-  })();
+  const cleanedTranscript = cleanTranscriptText(sermon.transcript_text || '');
 
   const transcriptContent = (
     <div className="space-y-6">
@@ -412,13 +392,52 @@ export default async function SermonDetailPage({
 
         {/* Actions */}
         <div className="flex gap-3">
-          <a
-            href={`/api/sermons/${sermon.sermon_code}/pdf`}
-            download
-            className="btn btn-primary flex-1"
-          >
-            Download PDF (with Transcript)
-          </a>
+          <details className="relative flex-1 group">
+            <summary className="btn btn-primary w-full list-none flex items-center justify-center gap-2 cursor-pointer">
+              <Download size={16} />
+              Transcript Export
+              <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="absolute left-0 right-0 top-full mt-2 z-30 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] shadow-2xl p-1.5 space-y-1">
+              <a
+                href={`/api/sermons/${sermon.sermon_code}/export?format=pdf&scope=full`}
+                download
+                className="block px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+              >
+                Download whole transcript (PDF)
+              </a>
+              <a
+                href={`/api/sermons/${sermon.sermon_code}/export?format=docx&scope=full`}
+                download
+                className="block px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+              >
+                Download whole transcript (DOCX)
+              </a>
+              <a
+                href={`/api/sermons/${sermon.sermon_code}/export?format=pdf&scope=highlights&q=${encodeURIComponent(highlightQuery)}`}
+                download
+                className={`block px-3 py-2 rounded-lg text-sm hover:bg-[var(--surface-hover)] ${
+                  highlightQuery ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] pointer-events-none opacity-50'
+                }`}
+              >
+                Download highlighted paragraphs (PDF)
+              </a>
+              <a
+                href={`/api/sermons/${sermon.sermon_code}/export?format=docx&scope=highlights&q=${encodeURIComponent(highlightQuery)}`}
+                download
+                className={`block px-3 py-2 rounded-lg text-sm hover:bg-[var(--surface-hover)] ${
+                  highlightQuery ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] pointer-events-none opacity-50'
+                }`}
+              >
+                Download highlighted paragraphs (DOCX)
+              </a>
+              {!highlightQuery && (
+                <p className="px-3 pb-1 pt-0.5 text-[10px] text-[var(--text-tertiary)]">
+                  Open this sermon from transcript search to enable highlighted-paragraph exports.
+                </p>
+              )}
+            </div>
+          </details>
           {sermon.audio_url ? (
             <a
               href={sermon.audio_url}
