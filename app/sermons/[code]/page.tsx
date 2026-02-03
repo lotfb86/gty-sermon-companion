@@ -395,10 +395,10 @@ export default async function SermonDetailPage({
           <details className="relative flex-1 group">
             <summary className="btn btn-primary w-full list-none flex items-center justify-center gap-2 cursor-pointer">
               <Download size={16} />
-              Transcript Export
-              <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+              Export Transcript
+              <ChevronDown size={18} className="transition-transform group-open:rotate-180 text-[var(--bg-primary)]/90" />
             </summary>
-            <div className="absolute left-0 right-0 top-full mt-2 z-30 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] shadow-2xl p-1.5 space-y-1">
+            <div className="absolute left-0 right-0 bottom-full mb-2 z-[60] rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] shadow-2xl p-1.5 space-y-1 max-h-[60vh] overflow-y-auto">
               <a
                 href={`/api/sermons/${sermon.sermon_code}/export?format=pdf&scope=full`}
                 download

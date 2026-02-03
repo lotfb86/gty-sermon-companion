@@ -60,6 +60,53 @@ function paragraphToRuns(paragraph: string, terms: string[]): TextRun[] {
   return runs.length > 0 ? runs : [new TextRun(paragraph)];
 }
 
+function renderPdfLineWithHighlights(
+  doc: jsPDF,
+  line: string,
+  x: number,
+  y: number,
+  terms: string[]
+): void {
+  if (terms.length === 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(55, 55, 55);
+    doc.text(line, x, y);
+    return;
+  }
+
+  const sortedTerms = [...terms].sort((a, b) => b.length - a.length);
+  const regex = new RegExp(`(${sortedTerms.map(escapeRegex).join('|')})`, 'gi');
+  let lastIndex = 0;
+  let cursorX = x;
+  let match = regex.exec(line);
+
+  while (match) {
+    if (match.index > lastIndex) {
+      const plainText = line.slice(lastIndex, match.index);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(55, 55, 55);
+      doc.text(plainText, cursorX, y);
+      cursorX += doc.getTextWidth(plainText);
+    }
+
+    const highlighted = match[0];
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(166, 115, 16);
+    doc.text(highlighted, cursorX, y);
+    cursorX += doc.getTextWidth(highlighted);
+
+    lastIndex = match.index + highlighted.length;
+    match = regex.exec(line);
+  }
+
+  if (lastIndex < line.length) {
+    const tail = line.slice(lastIndex);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(55, 55, 55);
+    doc.text(tail, cursorX, y);
+  }
+}
+
 function buildPdfBuffer(options: {
   title: string;
   subtitle: string;
@@ -103,9 +150,7 @@ function buildPdfBuffer(options: {
     doc.setTextColor(120, 120, 120);
     doc.text('No matching transcript paragraphs were found for this search term.', margin, y);
   } else {
-    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.setTextColor(55, 55, 55);
     for (const paragraph of options.paragraphs) {
       const lines = doc.splitTextToSize(paragraph, contentWidth);
       for (const line of lines) {
@@ -113,7 +158,7 @@ function buildPdfBuffer(options: {
           doc.addPage();
           y = 20;
         }
-        doc.text(line, margin, y);
+        renderPdfLineWithHighlights(doc, line, margin, y, options.isHighlighted ? options.terms : []);
         y += 5;
       }
       y += 3;

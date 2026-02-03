@@ -31,6 +31,50 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function splitTranscriptIntoBlocks(cleanedTranscript: string): string[] {
+  const paragraphBlocks = cleanedTranscript
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\n/g, ' ').trim())
+    .filter(Boolean);
+
+  if (paragraphBlocks.length > 1) {
+    return paragraphBlocks;
+  }
+
+  const lineBlocks = cleanedTranscript
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lineBlocks.length > 1) {
+    const grouped: string[] = [];
+    const chunkSize = 3;
+    for (let i = 0; i < lineBlocks.length; i += chunkSize) {
+      grouped.push(lineBlocks.slice(i, i + chunkSize).join(' '));
+    }
+    return grouped;
+  }
+
+  const normalized = cleanedTranscript.replace(/\s+/g, ' ').trim();
+  if (!normalized) return [];
+
+  const sentenceBlocks = normalized
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"“'])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  if (sentenceBlocks.length > 1) {
+    const grouped: string[] = [];
+    const chunkSize = 3;
+    for (let i = 0; i < sentenceBlocks.length; i += chunkSize) {
+      grouped.push(sentenceBlocks.slice(i, i + chunkSize).join(' '));
+    }
+    return grouped;
+  }
+
+  return [normalized];
+}
+
 export function getQueryTerms(query: string): string[] {
   if (!query) return [];
   return Array.from(
@@ -52,10 +96,7 @@ export function extractTranscriptParagraphs(
     return { paragraphs: [], terms: [], isHighlighted: false };
   }
 
-  const allParagraphs = cleanedTranscript
-    .split('\n\n')
-    .map((paragraph) => paragraph.replace(/\n/g, ' ').trim())
-    .filter(Boolean);
+  const allParagraphs = splitTranscriptIntoBlocks(cleanedTranscript);
 
   const terms = getQueryTerms(query || '');
   if (terms.length === 0) {
