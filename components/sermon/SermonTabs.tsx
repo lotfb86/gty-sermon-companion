@@ -2,12 +2,6 @@
 
 import { useState } from 'react';
 
-interface SermonTabsProps {
-  overviewContent: React.ReactNode;
-  studyNotesContent: React.ReactNode;
-  transcriptContent: React.ReactNode;
-}
-
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'study', label: 'Study Notes' },
@@ -16,8 +10,15 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
-export default function SermonTabs({ overviewContent, studyNotesContent, transcriptContent }: SermonTabsProps) {
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+interface SermonTabsProps {
+  overviewContent: React.ReactNode;
+  studyNotesContent: React.ReactNode;
+  transcriptContent: React.ReactNode;
+  initialTab?: TabId;
+}
+
+export default function SermonTabs({ overviewContent, studyNotesContent, transcriptContent, initialTab = 'overview' }: SermonTabsProps) {
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
   return (
     <div>

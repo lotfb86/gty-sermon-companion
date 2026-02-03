@@ -245,7 +245,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
               </h3>
               <div className="space-y-3">
                 {transcriptWithSnippets.map((result) => (
-                  <TranscriptResultCard key={result.id} result={result} />
+                  <TranscriptResultCard key={result.id} result={result} query={query} />
                 ))}
               </div>
             </section>

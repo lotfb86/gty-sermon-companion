@@ -16,13 +16,18 @@ import BiblicalContent from '@/components/sermon/BiblicalContent';
 import SeriesNavigation from '@/components/sermon/SeriesNavigation';
 import RelatedSermons from '@/components/sermon/RelatedSermons';
 import AddToQueueButton from '@/components/AddToQueueButton';
+import TranscriptWithHighlight from '@/components/sermon/TranscriptWithHighlight';
 
 export default async function SermonDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { code } = await params;
+  const sp = await searchParams;
+  const highlightQuery = (sp.t as string) || '';
   const sermon = await getSermonByCode(code);
 
   if (!sermon) {
@@ -264,37 +269,45 @@ export default async function SermonDetailPage({
   );
 
   // TRANSCRIPT TAB
+  // Clean transcript text (shared logic for both highlighted and plain rendering)
+  const cleanedTranscript = (() => {
+    let text = sermon.transcript_text || '';
+    if (!text) return '';
+    const junkPatterns = [
+      /^.*?(VIDEO SERMON|AUDIO SERMON).*$/gim,
+      /^(WATCH NOW|ADD TO WATCHLIST|SHARE|DOWNLOAD|TRANSCRIPT|PRINT|SERMONS ARCHIVE|RESET|CD|DVD|MP3|MP4)\s*$/gim,
+      /^[A-Z]\s*$/gm,
+    ];
+    for (const pattern of junkPatterns) {
+      text = text.replace(pattern, '');
+    }
+    const lines = text.split('\n').filter(l => l.trim().length > 0);
+    let startIdx = 0;
+    for (let i = 0; i < Math.min(lines.length, 20); i++) {
+      const line = lines[i].trim();
+      if (line.length > 60 && /[a-z]/.test(line) && /[.,:;]/.test(line)) {
+        startIdx = i;
+        break;
+      }
+    }
+    text = lines.slice(startIdx).join('\n');
+    return text.replace(/\n{3,}/g, '\n\n').trim();
+  })();
+
   const transcriptContent = (
     <div className="space-y-6">
-      {sermon.transcript_text ? (
+      {cleanedTranscript ? (
         <div className="card-elevated">
           <h3 className="font-serif text-lg font-bold mb-4 text-[var(--text-primary)]">
             Full Transcript
           </h3>
-          <div className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
-            {(() => {
-              let text = sermon.transcript_text || '';
-              const junkPatterns = [
-                /^.*?(VIDEO SERMON|AUDIO SERMON).*$/gim,
-                /^(WATCH NOW|ADD TO WATCHLIST|SHARE|DOWNLOAD|TRANSCRIPT|PRINT|SERMONS ARCHIVE|RESET|CD|DVD|MP3|MP4)\s*$/gim,
-                /^[A-Z]\s*$/gm,
-              ];
-              for (const pattern of junkPatterns) {
-                text = text.replace(pattern, '');
-              }
-              const lines = text.split('\n').filter(l => l.trim().length > 0);
-              let startIdx = 0;
-              for (let i = 0; i < Math.min(lines.length, 20); i++) {
-                const line = lines[i].trim();
-                if (line.length > 60 && /[a-z]/.test(line) && /[.,:;]/.test(line)) {
-                  startIdx = i;
-                  break;
-                }
-              }
-              text = lines.slice(startIdx).join('\n');
-              return text.replace(/\n{3,}/g, '\n\n').trim();
-            })()}
-          </div>
+          {highlightQuery ? (
+            <TranscriptWithHighlight text={cleanedTranscript} query={highlightQuery} />
+          ) : (
+            <div className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
+              {cleanedTranscript}
+            </div>
+          )}
         </div>
       ) : (
         <div className="text-center py-12">
@@ -385,6 +398,7 @@ export default async function SermonDetailPage({
           overviewContent={overviewContent}
           studyNotesContent={studyNotesContent}
           transcriptContent={transcriptContent}
+          initialTab={highlightQuery ? 'transcript' : 'overview'}
         />
 
         {/* Related Sermons */}

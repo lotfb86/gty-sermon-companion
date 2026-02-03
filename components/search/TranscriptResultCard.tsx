@@ -16,12 +16,13 @@ interface TranscriptSearchResult {
 
 interface TranscriptResultCardProps {
   result: TranscriptSearchResult;
+  query: string;
 }
 
-export default function TranscriptResultCard({ result }: TranscriptResultCardProps) {
+export default function TranscriptResultCard({ result, query }: TranscriptResultCardProps) {
   return (
     <div className="card group relative">
-      <Link href={`/sermons/${result.sermon_code}`} className="block">
+      <Link href={`/sermons/${result.sermon_code}?t=${encodeURIComponent(query)}`} className="block">
         <div className="flex items-center gap-3 mb-2">
           <PlayButton sermon={result} size="sm" />
           <div className="flex-1 min-w-0">
