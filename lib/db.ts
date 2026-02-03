@@ -1952,6 +1952,31 @@ function extractTranscriptStudyOccurrences(
   return occurrences;
 }
 
+function buildFallbackOccurrence(
+  transcriptText: string | undefined,
+  usageContexts: TranscriptStudyMetadataRef[],
+  primaryReference: string | undefined,
+  book: string,
+  chapter: number,
+  verse: number
+): TranscriptStudyOccurrence | null {
+  const cleanedTranscript = cleanTranscriptText(transcriptText || '');
+  const paragraphs = splitTranscriptIntoStudyParagraphs(cleanedTranscript);
+  const paragraph = paragraphs.find((item) => item.length > 30);
+  if (!paragraph) return null;
+
+  const matchedReference =
+    usageContexts[0]?.reference ||
+    primaryReference ||
+    `${book} ${chapter}:${verse}`;
+
+  return {
+    paragraph,
+    matched_reference: matchedReference,
+    usage_context: usageContexts[0]?.context,
+  };
+}
+
 function createSortedFacetList(counts: Map<string, number>): TranscriptStudyFacet[] {
   return [...counts.entries()]
     .map(([value, count]) => ({ value, count }))
@@ -1959,6 +1984,52 @@ function createSortedFacetList(counts: Map<string, number>): TranscriptStudyFace
       if (b.count !== a.count) return b.count - a.count;
       return a.value.localeCompare(b.value);
     });
+}
+
+function getTranscriptChapterSearchPatterns(book: string, chapter: number): string[] {
+  const variants = getBookSearchVariants(book);
+  const patterns = new Set<string>();
+
+  for (const variant of variants) {
+    const normalizedVariant = variant.replace(/\s+/g, ' ').trim();
+    if (!normalizedVariant) continue;
+
+    patterns.add(`%${normalizedVariant} ${chapter}%`);
+    patterns.add(`%${normalizedVariant}. ${chapter}%`);
+    patterns.add(`%${normalizedVariant}${chapter}%`);
+  }
+
+  return [...patterns];
+}
+
+async function fetchTranscriptStudyCandidates(book: string, chapter: number): Promise<TranscriptStudyCandidateRow[]> {
+  const patterns = getTranscriptChapterSearchPatterns(book, chapter);
+  if (patterns.length === 0) return [];
+
+  const whereClause = patterns.map(() => 'LOWER(COALESCE(s.transcript_text, \'\')) LIKE LOWER(?)').join(' OR ');
+  const args: (string | number)[] = [...patterns];
+
+  const result = await client.execute({
+    sql: `
+      SELECT
+        s.id,
+        s.sermon_code,
+        s.title,
+        s.date_preached,
+        s.transcript_text,
+        s.llm_metadata,
+        (SELECT sr2.reference_text FROM scripture_references sr2
+         WHERE sr2.sermon_id = s.id ORDER BY sr2.id LIMIT 1) as primary_reference
+      FROM sermons s
+      WHERE s.transcript_text IS NOT NULL
+        AND (${whereClause})
+      ORDER BY s.date_preached DESC, s.id DESC
+      LIMIT 5000
+    `,
+    args,
+  });
+
+  return rowsToObjects<TranscriptStudyCandidateRow>(result.rows);
 }
 
 export async function getVersesForBookChapter(book: string, chapter: number): Promise<number[]> {
@@ -2002,35 +2073,21 @@ export async function searchTranscriptStudyByReference(
     offset = 0,
   } = options;
 
-  const candidatesResult = await client.execute({
-    sql: `
-      SELECT
-        s.id,
-        s.sermon_code,
-        s.title,
-        s.date_preached,
-        s.transcript_text,
-        s.llm_metadata,
-        (SELECT sr2.reference_text FROM scripture_references sr2
-         WHERE sr2.sermon_id = s.id ORDER BY sr2.id LIMIT 1) as primary_reference
-      FROM sermons s
-      JOIN scripture_references sr ON sr.sermon_id = s.id
-      WHERE s.transcript_text IS NOT NULL
-        AND sr.book = ?
-        AND sr.chapter = ?
-        AND (sr.verse_start IS NULL OR (sr.verse_start <= ? AND COALESCE(sr.verse_end, sr.verse_start) >= ?))
-      GROUP BY s.id
-      ORDER BY s.date_preached DESC, s.id DESC
-    `,
-    args: [book, chapter, verse, verse],
-  });
-
-  const candidates = rowsToObjects<TranscriptStudyCandidateRow>(candidatesResult.rows);
+  const scriptureRef: ParsedScriptureQuery = { book, chapter, verse };
+  const candidates = await fetchTranscriptStudyCandidates(book, chapter);
   const allGroups: TranscriptStudySermonGroup[] = [];
   const doctrineCounts = new Map<string, number>();
   const yearCounts = new Map<string, number>();
 
   for (const candidate of candidates) {
+    if (!transcriptContainsScriptureVerse(candidate.transcript_text, scriptureRef)) {
+      continue;
+    }
+
+    if (year && candidate.date_preached?.slice(0, 4) !== String(year)) {
+      continue;
+    }
+
     const metadata = parseMetadataSafe(candidate.llm_metadata);
     const doctrines = getDoctrineTags(metadata);
     const usageContexts = extractUsageContextsForVerse(metadata, book, chapter, verse);
@@ -2041,6 +2098,20 @@ export async function searchTranscriptStudyByReference(
       verse,
       usageContexts
     );
+
+    if (occurrences.length === 0) {
+      const fallback = buildFallbackOccurrence(
+        candidate.transcript_text,
+        usageContexts,
+        candidate.primary_reference,
+        book,
+        chapter,
+        verse
+      );
+      if (fallback) {
+        occurrences.push(fallback);
+      }
+    }
 
     if (occurrences.length === 0) continue;
 
@@ -2066,10 +2137,7 @@ export async function searchTranscriptStudyByReference(
     });
   }
 
-  const withYearFilter = year
-    ? allGroups.filter((group) => group.date_preached?.slice(0, 4) === String(year))
-    : allGroups;
-  const filtered = withYearFilter.filter((group) => doctrineFilterMatches(group.doctrines, selectedDoctrines));
+  const filtered = allGroups.filter((group) => doctrineFilterMatches(group.doctrines, selectedDoctrines));
   const paginated = filtered.slice(offset, offset + limit);
 
   return {

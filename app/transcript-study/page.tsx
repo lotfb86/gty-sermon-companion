@@ -2,8 +2,7 @@ import Link from 'next/link';
 import { BookOpen, Download, Search } from 'lucide-react';
 import {
   getAllBooks,
-  getChaptersForBook,
-  getVersesForBookChapter,
+  parseScriptureQuery,
   searchTranscriptStudyByReference,
   type TranscriptStudyFacet,
 } from '@/lib/db';
@@ -109,30 +108,26 @@ function renderFacetLabel(facet: TranscriptStudyFacet): string {
 export default async function TranscriptStudyPage({ searchParams }: PageProps) {
   const params = await searchParams;
 
-  const selectedBook = getSingleParam(params.book);
+  const rawBookInput = (getSingleParam(params.book) || '').trim();
   const selectedChapter = getNumberParam(params.chapter);
   const selectedVerse = getNumberParam(params.verse);
   const selectedYear = getNumberParam(params.year);
   const selectedDoctrines = unique(getMultiParams(params.doctrine));
   const offset = Math.max(0, getNumberParam(params.offset) || 0);
 
+  const normalizedBook = rawBookInput
+    ? parseScriptureQuery(`${rawBookInput} 1`)?.book
+    : undefined;
+
   const booksRaw = await getAllBooks();
   const availableBooks = sortBooksByCanonicalOrder(booksRaw.map((item) => item.book));
-
-  const chapters = selectedBook ? await getChaptersForBook(selectedBook) : [];
-  const chapterOptions = chapters.map((item) => item.chapter).sort((a, b) => a - b);
-  const chapterIsValid = selectedChapter !== undefined && chapterOptions.includes(selectedChapter);
-
-  const verses = selectedBook && chapterIsValid
-    ? await getVersesForBookChapter(selectedBook, selectedChapter)
-    : [];
-  const verseIsValid = selectedVerse !== undefined && verses.includes(selectedVerse);
-
-  const canRunSearch = Boolean(selectedBook && chapterIsValid && verseIsValid);
+  const chapterIsValid = selectedChapter !== undefined && selectedChapter > 0;
+  const verseIsValid = selectedVerse !== undefined && selectedVerse > 0;
+  const canRunSearch = Boolean(normalizedBook && chapterIsValid && verseIsValid);
 
   const results = canRunSearch
     ? await searchTranscriptStudyByReference({
-        book: selectedBook!,
+        book: normalizedBook!,
         chapter: selectedChapter!,
         verse: selectedVerse!,
         selectedDoctrines,
@@ -143,11 +138,11 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
     : null;
 
   const selectedReference = canRunSearch
-    ? `${selectedBook} ${selectedChapter}:${selectedVerse}`
+    ? `${normalizedBook} ${selectedChapter}:${selectedVerse}`
     : '';
 
   const currentSearchHref = buildTranscriptStudyHref({
-    book: selectedBook,
+    book: normalizedBook,
     chapter: selectedChapter,
     verse: selectedVerse,
     year: selectedYear,
@@ -176,57 +171,58 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
             <div className="grid grid-cols-3 gap-2">
               <label className="text-xs text-[var(--text-secondary)]">
                 <span className="mb-1 block">Book</span>
-                <select name="book" defaultValue={selectedBook || ''} className="input py-2 px-3 text-sm h-11">
-                  <option value="">Select</option>
+                <input
+                  name="book"
+                  list="bill-book-options"
+                  placeholder="Romans"
+                  defaultValue={rawBookInput}
+                  className="input py-2 px-3 text-sm h-11"
+                  autoComplete="off"
+                />
+                <datalist id="bill-book-options">
                   {availableBooks.map((book) => (
-                    <option key={book} value={book}>
-                      {book}
-                    </option>
+                    <option key={book} value={book} />
                   ))}
-                </select>
+                </datalist>
               </label>
 
               <label className="text-xs text-[var(--text-secondary)]">
                 <span className="mb-1 block">Chapter</span>
-                <select
+                <input
                   name="chapter"
-                  defaultValue={chapterIsValid ? String(selectedChapter) : ''}
-                  className="input py-2 px-3 text-sm h-11 disabled:opacity-40"
-                  disabled={!selectedBook}
-                >
-                  <option value="">Select</option>
-                  {chapterOptions.map((chapter) => (
-                    <option key={chapter} value={chapter}>
-                      {chapter}
-                    </option>
-                  ))}
-                </select>
+                  type="number"
+                  min={1}
+                  placeholder="12"
+                  defaultValue={selectedChapter ? String(selectedChapter) : ''}
+                  className="input py-2 px-3 text-sm h-11"
+                />
               </label>
 
               <label className="text-xs text-[var(--text-secondary)]">
                 <span className="mb-1 block">Verse</span>
-                <select
+                <input
                   name="verse"
-                  defaultValue={verseIsValid ? String(selectedVerse) : ''}
-                  className="input py-2 px-3 text-sm h-11 disabled:opacity-40"
-                  disabled={!chapterIsValid}
-                >
-                  <option value="">Select</option>
-                  {verses.map((verse) => (
-                    <option key={verse} value={verse}>
-                      {verse}
-                    </option>
-                  ))}
-                </select>
+                  type="number"
+                  min={1}
+                  placeholder="2"
+                  defaultValue={selectedVerse ? String(selectedVerse) : ''}
+                  className="input py-2 px-3 text-sm h-11"
+                />
               </label>
             </div>
             <button type="submit" className="btn btn-primary w-full">
-              {canRunSearch ? 'Run Bill Search' : 'Load Next Input'}
+              Run Bill Search
             </button>
           </form>
         </section>
 
-        {!canRunSearch && (
+        {rawBookInput && !normalizedBook && (
+          <div className="card text-sm text-[var(--text-secondary)]">
+            Book name not recognized. Try the full canonical name (example: <span className="text-[var(--accent)]">James</span>).
+          </div>
+        )}
+
+        {!canRunSearch && !rawBookInput && (
           <div className="card text-sm text-[var(--text-secondary)]">
             Select all three fields (book, chapter, verse) to run Bill Search.
           </div>
@@ -240,13 +236,13 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
                   Results ({results.total_items})
                 </h3>
                 <span className="text-xs text-[var(--text-tertiary)]">
-                  {selectedBook} {selectedChapter}:{selectedVerse}
+                  {normalizedBook} {selectedChapter}:{selectedVerse}
                 </span>
               </div>
 
               {results.year_facets.length > 0 && (
                 <form action="/transcript-study" method="GET" className="card p-3">
-                  <input type="hidden" name="book" value={selectedBook} />
+                  <input type="hidden" name="book" value={normalizedBook} />
                   <input type="hidden" name="chapter" value={selectedChapter} />
                   <input type="hidden" name="verse" value={selectedVerse} />
                   {selectedDoctrines.map((doctrine) => (
@@ -279,7 +275,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href={buildTranscriptStudyHref({
-                        book: selectedBook,
+                        book: normalizedBook,
                         chapter: selectedChapter,
                         verse: selectedVerse,
                         year: selectedYear,
@@ -296,7 +292,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
                         <Link
                           key={facet.value}
                           href={buildTranscriptStudyHref({
-                            book: selectedBook,
+                            book: normalizedBook,
                             chapter: selectedChapter,
                             verse: selectedVerse,
                             year: selectedYear,
@@ -367,7 +363,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
                     {offset > 0 && (
                       <Link
                         href={buildTranscriptStudyHref({
-                          book: selectedBook,
+                          book: normalizedBook,
                           chapter: selectedChapter,
                           verse: selectedVerse,
                           year: selectedYear,
@@ -382,7 +378,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
                     {results.has_more && (
                       <Link
                         href={buildTranscriptStudyHref({
-                          book: selectedBook,
+                          book: normalizedBook,
                           chapter: selectedChapter,
                           verse: selectedVerse,
                           year: selectedYear,
