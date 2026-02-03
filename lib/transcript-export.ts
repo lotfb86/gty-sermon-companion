@@ -76,16 +76,9 @@ function splitTranscriptIntoBlocks(cleanedTranscript: string): string[] {
 }
 
 export function getQueryTerms(query: string): string[] {
-  if (!query) return [];
-  return Array.from(
-    new Set(
-      query
-        .toLowerCase()
-        .split(/\s+/)
-        .map((term) => term.trim())
-        .filter((term) => term.length >= 2)
-    )
-  );
+  const phrase = query.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!phrase) return [];
+  return [phrase];
 }
 
 export function extractTranscriptParagraphs(
@@ -103,7 +96,9 @@ export function extractTranscriptParagraphs(
     return { paragraphs: allParagraphs, terms: [], isHighlighted: false };
   }
 
-  const regex = new RegExp(`\\b(${terms.map(escapeRegex).join('|')})\\b`, 'i');
+  // Match the full query phrase so "repent and be baptized" does not match
+  // paragraphs containing only individual words like "be" or "repent".
+  const regex = new RegExp(escapeRegex(terms[0]), 'i');
   const highlightedParagraphs = allParagraphs.filter((paragraph) => regex.test(paragraph));
 
   return {
