@@ -33,38 +33,21 @@ function normalizeStringList(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
-function listKey(numbers: number[], strings: string[]): string {
-  return `${normalizeNumberList(numbers).join(',')}|${normalizeStringList(strings).join('|')}`;
+function sameNumberSelections(a: number[], b: number[]): boolean {
+  const na = normalizeNumberList(a);
+  const nb = normalizeNumberList(b);
+  if (na.length !== nb.length) return false;
+  return na.every((value, index) => value === nb[index]);
 }
 
-function mergeBySermonCode(existing: TranscriptStudySermonGroup[], incoming: TranscriptStudySermonGroup[]): TranscriptStudySermonGroup[] {
-  const map = new Map<string, TranscriptStudySermonGroup>();
-  for (const item of existing) {
-    map.set(item.sermon_code, item);
-  }
-  for (const item of incoming) {
-    if (!map.has(item.sermon_code)) {
-      map.set(item.sermon_code, item);
-    }
-  }
-  return [...map.values()];
+function sameStringSelections(a: string[], b: string[]): boolean {
+  const na = normalizeStringList(a);
+  const nb = normalizeStringList(b);
+  if (na.length !== nb.length) return false;
+  return na.every((value, index) => value === nb[index]);
 }
 
-function toggleYear(selected: number[], year: number): number[] {
-  if (selected.includes(year)) {
-    return selected.filter((item) => item !== year);
-  }
-  return [...selected, year];
-}
-
-function toggleDoctrine(selected: string[], doctrine: string): string[] {
-  if (selected.includes(doctrine)) {
-    return selected.filter((item) => item !== doctrine);
-  }
-  return [...selected, doctrine];
-}
-
-function buildSearchParams(options: {
+function buildParams(options: {
   book: string;
   chapter: number;
   verse: number;
@@ -88,11 +71,30 @@ function buildSearchParams(options: {
   return params;
 }
 
+function toggleYear(selected: number[], year: number): number[] {
+  if (selected.includes(year)) return selected.filter((item) => item !== year);
+  return [...selected, year];
+}
+
+function toggleDoctrine(selected: string[], doctrine: string): string[] {
+  if (selected.includes(doctrine)) return selected.filter((item) => item !== doctrine);
+  return [...selected, doctrine];
+}
+
+function mergeBySermonCode(existing: TranscriptStudySermonGroup[], incoming: TranscriptStudySermonGroup[]): TranscriptStudySermonGroup[] {
+  const map = new Map<string, TranscriptStudySermonGroup>();
+  for (const item of existing) map.set(item.sermon_code, item);
+  for (const item of incoming) {
+    if (!map.has(item.sermon_code)) map.set(item.sermon_code, item);
+  }
+  return [...map.values()];
+}
+
 function FilterSkeleton() {
   return (
     <div className="space-y-4">
-      {[1, 2, 3].map((id) => (
-        <div key={id} className="card-elevated animate-pulse h-28" />
+      {[1, 2, 3].map((item) => (
+        <div key={item} className="card-elevated animate-pulse h-28" />
       ))}
     </div>
   );
@@ -109,38 +111,37 @@ export default function TranscriptStudyFeed({
 }: TranscriptStudyFeedProps) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const initialFilterKeyRef = useRef(listKey(initialSelectedYears, selectedDoctrines));
 
-  const [activeYears, setActiveYears] = useState<number[]>(normalizeNumberList(initialSelectedYears));
-  const [activeDoctrines, setActiveDoctrines] = useState<string[]>(normalizeStringList(selectedDoctrines));
-
+  const [resultMeta, setResultMeta] = useState<TranscriptStudySearchResult>(initialResult);
   const [items, setItems] = useState<TranscriptStudySermonGroup[]>(initialResult.items);
   const [hasMore, setHasMore] = useState(initialResult.has_more);
   const [nextOffset, setNextOffset] = useState(initialResult.items.length);
-  const [resultMeta, setResultMeta] = useState<TranscriptStudySearchResult>(initialResult);
+
+  const [appliedYears, setAppliedYears] = useState<number[]>(normalizeNumberList(initialSelectedYears));
+  const [appliedDoctrines, setAppliedDoctrines] = useState<string[]>(normalizeStringList(selectedDoctrines));
+
+  const [pendingYears, setPendingYears] = useState<number[]>(normalizeNumberList(initialSelectedYears));
+  const [pendingDoctrines, setPendingDoctrines] = useState<string[]>(normalizeStringList(selectedDoctrines));
 
   const [filterLoading, setFilterLoading] = useState(false);
   const [appendLoading, setAppendLoading] = useState(false);
   const [showAllDoctrines, setShowAllDoctrines] = useState(false);
   const [showAllYears, setShowAllYears] = useState(false);
 
-  const activeFilterKey = listKey(activeYears, activeDoctrines);
-  const loadedFilterKeyRef = useRef(activeFilterKey);
-
   useEffect(() => {
     const normalizedYears = normalizeNumberList(initialSelectedYears);
     const normalizedDoctrines = normalizeStringList(selectedDoctrines);
-    const key = listKey(normalizedYears, normalizedDoctrines);
 
-    initialFilterKeyRef.current = key;
-    loadedFilterKeyRef.current = key;
-
-    setActiveYears(normalizedYears);
-    setActiveDoctrines(normalizedDoctrines);
     setResultMeta(initialResult);
     setItems(initialResult.items);
     setHasMore(initialResult.has_more);
     setNextOffset(initialResult.items.length);
+
+    setAppliedYears(normalizedYears);
+    setAppliedDoctrines(normalizedDoctrines);
+    setPendingYears(normalizedYears);
+    setPendingDoctrines(normalizedDoctrines);
+
     setFilterLoading(false);
     setAppendLoading(false);
   }, [initialResult, initialSelectedYears, selectedDoctrines]);
@@ -157,61 +158,67 @@ export default function TranscriptStudyFeed({
   );
   const visibleYears = showAllYears ? sortedYears : sortedYears.slice(0, 5);
 
-  const runFilteredFetch = useCallback(async () => {
-    const params = buildSearchParams({
-      book,
-      chapter,
-      verse,
-      years: activeYears,
-      doctrines: activeDoctrines,
-      limit: pageSize,
-      offset: 0,
-    });
+  const applyFilters = useCallback(
+    async (years: number[], doctrines: string[]) => {
+      const normalizedYears = normalizeNumberList(years);
+      const normalizedDoctrines = normalizeStringList(doctrines);
 
-    const response = await fetch(`/api/transcript-study/search?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch filtered results');
-    }
+      setFilterLoading(true);
+      setItems([]);
+      setHasMore(false);
+      setNextOffset(0);
 
-    const data = (await response.json()) as TranscriptStudySearchResult;
-    setResultMeta(data);
-    setItems(data.items || []);
-    setHasMore(Boolean(data.has_more));
-    setNextOffset((data.items || []).length);
-    loadedFilterKeyRef.current = listKey(activeYears, activeDoctrines);
-    window.history.replaceState({}, '', `/transcript-study?${params.toString()}`);
-  }, [activeDoctrines, activeYears, book, chapter, pageSize, verse]);
+      try {
+        const params = buildParams({
+          book,
+          chapter,
+          verse,
+          years: normalizedYears,
+          doctrines: normalizedDoctrines,
+          offset: 0,
+          limit: pageSize,
+        });
 
-  useEffect(() => {
-    if (activeFilterKey === loadedFilterKeyRef.current) return;
+        const response = await fetch(`/api/transcript-study/search?${params.toString()}`);
+        if (!response.ok) throw new Error('Failed filter update');
 
-    setFilterLoading(true);
-    setItems([]);
-    setHasMore(false);
-    setNextOffset(0);
+        const data = (await response.json()) as TranscriptStudySearchResult;
+        setResultMeta(data);
+        setItems(data.items || []);
+        setHasMore(Boolean(data.has_more));
+        setNextOffset((data.items || []).length);
 
-    const timer = setTimeout(() => {
-      runFilteredFetch()
-        .finally(() => setFilterLoading(false));
-    }, 320);
+        setAppliedYears(normalizedYears);
+        setAppliedDoctrines(normalizedDoctrines);
+        window.history.replaceState({}, '', `/transcript-study?${params.toString()}`);
+      } finally {
+        setFilterLoading(false);
+      }
+    },
+    [book, chapter, pageSize, verse]
+  );
 
-    return () => clearTimeout(timer);
-  }, [activeFilterKey, runFilteredFetch]);
+  const applyYears = useCallback(async () => {
+    await applyFilters(pendingYears, appliedDoctrines);
+  }, [applyFilters, appliedDoctrines, pendingYears]);
+
+  const applyDoctrines = useCallback(async () => {
+    await applyFilters(appliedYears, pendingDoctrines);
+  }, [applyFilters, appliedYears, pendingDoctrines]);
 
   const fetchMore = useCallback(async () => {
-    if (appendLoading || !hasMore || filterLoading) return;
+    if (appendLoading || filterLoading || !hasMore) return;
     setAppendLoading(true);
     try {
-      const params = buildSearchParams({
+      const params = buildParams({
         book,
         chapter,
         verse,
-        years: activeYears,
-        doctrines: activeDoctrines,
-        limit: pageSize,
+        years: appliedYears,
+        doctrines: appliedDoctrines,
         offset: nextOffset,
+        limit: pageSize,
       });
-
       const response = await fetch(`/api/transcript-study/search?${params.toString()}`);
       if (!response.ok) return;
 
@@ -229,7 +236,18 @@ export default function TranscriptStudyFeed({
     } finally {
       setAppendLoading(false);
     }
-  }, [activeDoctrines, activeYears, appendLoading, book, chapter, filterLoading, hasMore, nextOffset, pageSize, verse]);
+  }, [
+    appendLoading,
+    appliedDoctrines,
+    appliedYears,
+    book,
+    chapter,
+    filterLoading,
+    hasMore,
+    nextOffset,
+    pageSize,
+    verse,
+  ]);
 
   useEffect(() => {
     if (!hasMore || filterLoading) return;
@@ -249,13 +267,16 @@ export default function TranscriptStudyFeed({
     return () => observer.disconnect();
   }, [fetchMore, filterLoading, hasMore]);
 
+  const yearsDirty = !sameNumberSelections(pendingYears, appliedYears);
+  const doctrinesDirty = !sameStringSelections(pendingDoctrines, appliedDoctrines);
+
   const selectedReference = `${book} ${chapter}:${verse}`;
-  const exportQuery = buildSearchParams({
+  const exportQuery = buildParams({
     book,
     chapter,
     verse,
-    years: activeYears,
-    doctrines: activeDoctrines,
+    years: appliedYears,
+    doctrines: appliedDoctrines,
   }).toString();
 
   return (
@@ -268,10 +289,10 @@ export default function TranscriptStudyFeed({
             <div className="text-4xl font-bold text-[var(--accent)] leading-none">{resultMeta.total_items}</div>
             <div className="text-xs text-[var(--text-secondary)]">sermons with matching transcript context</div>
           </div>
-          {(activeYears.length > 0 || activeDoctrines.length > 0) && (
+          {(appliedYears.length > 0 || appliedDoctrines.length > 0) && (
             <div className="text-xs text-[var(--text-secondary)] text-right">
-              {activeYears.length > 0 && <div>Years: <span className="text-[var(--accent)]">{activeYears.join(', ')}</span></div>}
-              {activeDoctrines.length > 0 && <div>Doctrines: <span className="text-[var(--accent)]">{activeDoctrines.length}</span></div>}
+              {appliedYears.length > 0 && <div>Years: <span className="text-[var(--accent)]">{appliedYears.join(', ')}</span></div>}
+              {appliedDoctrines.length > 0 && <div>Doctrines: <span className="text-[var(--accent)]">{appliedDoctrines.length}</span></div>}
             </div>
           )}
         </div>
@@ -283,19 +304,19 @@ export default function TranscriptStudyFeed({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setActiveYears([])}
-              className={`tag ${activeYears.length === 0 ? 'tag-active' : ''}`}
+              onClick={() => setPendingYears([])}
+              className={`tag ${pendingYears.length === 0 ? 'tag-active' : ''}`}
             >
               All Years
             </button>
             {visibleYears.map((facet: TranscriptStudyFacet) => {
               const yearValue = Number(facet.value);
-              const active = activeYears.includes(yearValue);
+              const active = pendingYears.includes(yearValue);
               return (
                 <button
                   key={facet.value}
                   type="button"
-                  onClick={() => setActiveYears((prev) => toggleYear(prev, yearValue))}
+                  onClick={() => setPendingYears((prev) => toggleYear(prev, yearValue))}
                   className={`tag ${active ? 'tag-active' : ''}`}
                 >
                   {facet.value} ({facet.count})
@@ -303,15 +324,27 @@ export default function TranscriptStudyFeed({
               );
             })}
           </div>
-          {sortedYears.length > 5 && (
+          <div className="flex items-center justify-between">
+            {sortedYears.length > 5 ? (
+              <button
+                type="button"
+                onClick={() => setShowAllYears((prev) => !prev)}
+                className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+              >
+                {showAllYears ? 'Show Top 5' : `Show All (${sortedYears.length})`}
+              </button>
+            ) : (
+              <span />
+            )}
             <button
               type="button"
-              onClick={() => setShowAllYears((prev) => !prev)}
-              className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+              onClick={() => void applyYears()}
+              disabled={!yearsDirty || filterLoading}
+              className="btn btn-secondary text-xs px-4 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {showAllYears ? 'Show Top 5' : `Show All (${sortedYears.length})`}
+              Apply
             </button>
-          )}
+          </div>
         </div>
       )}
 
@@ -321,18 +354,18 @@ export default function TranscriptStudyFeed({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setActiveDoctrines([])}
-              className={`tag ${activeDoctrines.length === 0 ? 'tag-active' : ''}`}
+              onClick={() => setPendingDoctrines([])}
+              className={`tag ${pendingDoctrines.length === 0 ? 'tag-active' : ''}`}
             >
               All Doctrines
             </button>
             {visibleDoctrines.map((facet: TranscriptStudyFacet) => {
-              const active = activeDoctrines.includes(facet.value);
+              const active = pendingDoctrines.includes(facet.value);
               return (
                 <button
                   key={facet.value}
                   type="button"
-                  onClick={() => setActiveDoctrines((prev) => toggleDoctrine(prev, facet.value))}
+                  onClick={() => setPendingDoctrines((prev) => toggleDoctrine(prev, facet.value))}
                   className={`tag ${active ? 'tag-active' : ''}`}
                 >
                   {facet.value} ({facet.count})
@@ -340,15 +373,27 @@ export default function TranscriptStudyFeed({
               );
             })}
           </div>
-          {sortedDoctrines.length > 5 && (
+          <div className="flex items-center justify-between">
+            {sortedDoctrines.length > 5 ? (
+              <button
+                type="button"
+                onClick={() => setShowAllDoctrines((prev) => !prev)}
+                className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+              >
+                {showAllDoctrines ? 'Show Top 5' : `Show All (${sortedDoctrines.length})`}
+              </button>
+            ) : (
+              <span />
+            )}
             <button
               type="button"
-              onClick={() => setShowAllDoctrines((prev) => !prev)}
-              className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+              onClick={() => void applyDoctrines()}
+              disabled={!doctrinesDirty || filterLoading}
+              className="btn btn-secondary text-xs px-4 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {showAllDoctrines ? 'Show Top 5' : `Show All (${sortedDoctrines.length})`}
+              Apply
             </button>
-          )}
+          </div>
         </div>
       )}
 
