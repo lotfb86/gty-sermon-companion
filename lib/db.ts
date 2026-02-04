@@ -1740,9 +1740,13 @@ interface TranscriptStudyCandidateRow {
   primary_reference?: string;
 }
 
+export type TranscriptStudyMode = 'scripture' | 'text';
+export type TranscriptStudyTextMatchMode = 'exact' | 'all_words';
+
 export interface TranscriptStudyOccurrence {
   paragraph: string;
   matched_reference: string;
+  match_count?: number;
   usage_context?: string;
 }
 
@@ -1753,6 +1757,7 @@ export interface TranscriptStudySermonGroup {
   date_preached?: string;
   primary_reference?: string;
   doctrines: string[];
+  relevance_score?: number;
   occurrences: TranscriptStudyOccurrence[];
 }
 
@@ -1773,6 +1778,15 @@ export interface TranscriptStudySearchOptions {
   book: string;
   chapter: number;
   verse: number;
+  selectedDoctrines?: string[];
+  selectedYears?: number[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface TranscriptStudyTextSearchOptions {
+  query: string;
+  matchMode?: TranscriptStudyTextMatchMode;
   selectedDoctrines?: string[];
   selectedYears?: number[];
   limit?: number;
@@ -2032,6 +2046,189 @@ async function fetchTranscriptStudyCandidates(book: string, chapter: number): Pr
   return rowsToObjects<TranscriptStudyCandidateRow>(result.rows);
 }
 
+function normalizeSearchableText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeSearchableText(value: string): string[] {
+  return normalizeSearchableText(value)
+    .split(' ')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function countPhraseMatches(text: string, phrase: string): number {
+  if (!text || !phrase) return 0;
+  let count = 0;
+  let index = text.indexOf(phrase);
+  while (index !== -1) {
+    count += 1;
+    index = text.indexOf(phrase, index + phrase.length);
+  }
+  return count;
+}
+
+function countTokenMatches(tokens: string[], term: string): number {
+  let count = 0;
+  for (const token of tokens) {
+    if (token === term) count += 1;
+  }
+  return count;
+}
+
+function extractTranscriptStudyTextOccurrences(
+  transcriptText: string | undefined,
+  rawQuery: string,
+  matchMode: TranscriptStudyTextMatchMode
+): TranscriptStudyOccurrence[] {
+  if (!transcriptText) return [];
+
+  const cleanedTranscript = cleanTranscriptText(transcriptText);
+  if (!cleanedTranscript) return [];
+
+  const paragraphs = splitTranscriptIntoStudyParagraphs(cleanedTranscript);
+  if (paragraphs.length === 0) return [];
+
+  const normalizedQuery = normalizeSearchableText(rawQuery);
+  const queryTokens = [...new Set(tokenizeSearchableText(rawQuery))];
+  if (!normalizedQuery || queryTokens.length === 0) return [];
+
+  const occurrences: TranscriptStudyOccurrence[] = [];
+
+  for (const paragraph of paragraphs) {
+    const normalizedParagraph = normalizeSearchableText(paragraph);
+    if (!normalizedParagraph) continue;
+
+    if (matchMode === 'exact') {
+      const phraseCount = countPhraseMatches(normalizedParagraph, normalizedQuery);
+      if (phraseCount > 0) {
+        occurrences.push({
+          paragraph,
+          matched_reference: rawQuery,
+          match_count: phraseCount,
+        });
+      }
+      continue;
+    }
+
+    const paragraphTokens = normalizedParagraph.split(' ').filter(Boolean);
+    if (paragraphTokens.length === 0) continue;
+
+    const tokenCounts = queryTokens.map((term) => countTokenMatches(paragraphTokens, term));
+    const allTermsPresent = tokenCounts.every((count) => count > 0);
+    if (!allTermsPresent) continue;
+
+    const totalMatches = tokenCounts.reduce((sum, count) => sum + count, 0);
+    occurrences.push({
+      paragraph,
+      matched_reference: rawQuery,
+      match_count: totalMatches,
+    });
+  }
+
+  return occurrences;
+}
+
+function buildTranscriptTextSearchTerms(query: string): string[] {
+  return [...new Set(tokenizeSearchableText(query))].slice(0, 8);
+}
+
+async function fetchTranscriptStudyTextCandidates(query: string): Promise<TranscriptStudyCandidateRow[]> {
+  const terms = buildTranscriptTextSearchTerms(query);
+  if (terms.length === 0) return [];
+
+  const whereClause = terms.map(() => 'LOWER(COALESCE(s.transcript_text, \'\')) LIKE LOWER(?)').join(' AND ');
+  const args = terms.map((term) => `%${term}%`);
+
+  const result = await client.execute({
+    sql: `
+      SELECT
+        s.id,
+        s.sermon_code,
+        s.title,
+        s.date_preached,
+        s.transcript_text,
+        s.llm_metadata,
+        (SELECT sr2.reference_text FROM scripture_references sr2
+         WHERE sr2.sermon_id = s.id ORDER BY sr2.id LIMIT 1) as primary_reference
+      FROM sermons s
+      WHERE s.transcript_text IS NOT NULL
+        AND (${whereClause})
+      ORDER BY s.date_preached DESC, s.id DESC
+      LIMIT 5000
+    `,
+    args,
+  });
+
+  return rowsToObjects<TranscriptStudyCandidateRow>(result.rows);
+}
+
+function compareDatesDesc(a?: string, b?: string): number {
+  if (a && b) {
+    return b.localeCompare(a);
+  }
+  if (a) return -1;
+  if (b) return 1;
+  return 0;
+}
+
+function buildTranscriptStudySearchResult(
+  allGroups: TranscriptStudySermonGroup[],
+  selectedYears: number[],
+  selectedDoctrines: string[],
+  limit: number,
+  offset: number
+): TranscriptStudySearchResult {
+  const yearSelectionSet = new Set(
+    selectedYears.map((value) => Number(value)).filter((value) => !Number.isNaN(value))
+  );
+
+  const yearFilteredGroups = yearSelectionSet.size > 0
+    ? allGroups.filter((group) => {
+        if (!group.date_preached) return false;
+        const groupYear = Number(group.date_preached.slice(0, 4));
+        return yearSelectionSet.has(groupYear);
+      })
+    : allGroups;
+
+  const doctrineFilteredGroups = allGroups.filter((group) =>
+    doctrineFilterMatches(group.doctrines, selectedDoctrines)
+  );
+
+  const doctrineCounts = new Map<string, number>();
+  for (const group of yearFilteredGroups) {
+    for (const doctrine of new Set(group.doctrines)) {
+      doctrineCounts.set(doctrine, (doctrineCounts.get(doctrine) || 0) + 1);
+    }
+  }
+
+  const yearCounts = new Map<string, number>();
+  for (const group of doctrineFilteredGroups) {
+    if (!group.date_preached) continue;
+    const yearText = group.date_preached.slice(0, 4);
+    if (yearText.length === 4) {
+      yearCounts.set(yearText, (yearCounts.get(yearText) || 0) + 1);
+    }
+  }
+
+  const filtered = yearFilteredGroups.filter((group) =>
+    doctrineFilterMatches(group.doctrines, selectedDoctrines)
+  );
+  const paginated = filtered.slice(offset, offset + limit);
+
+  return {
+    items: paginated,
+    total_items: filtered.length,
+    has_more: offset + limit < filtered.length,
+    doctrine_facets: createSortedFacetList(doctrineCounts),
+    year_facets: createSortedFacetList(yearCounts).sort((a, b) => Number(b.value) - Number(a.value)),
+  };
+}
+
 export async function getVersesForBookChapter(book: string, chapter: number): Promise<number[]> {
   const result = await client.execute({
     sql: `
@@ -2077,8 +2274,6 @@ export async function searchTranscriptStudyByReference(
   const candidates = await fetchTranscriptStudyCandidates(book, chapter);
   const allGroups: TranscriptStudySermonGroup[] = [];
 
-  const yearSelectionSet = new Set(selectedYears.map((value) => Number(value)).filter((value) => !Number.isNaN(value)));
-
   for (const candidate of candidates) {
     if (!transcriptContainsScriptureVerse(candidate.transcript_text, scriptureRef)) {
       continue;
@@ -2122,46 +2317,79 @@ export async function searchTranscriptStudyByReference(
     });
   }
 
-  const yearFilteredGroups = yearSelectionSet.size > 0
-    ? allGroups.filter((group) => {
-        if (!group.date_preached) return false;
-        const groupYear = Number(group.date_preached.slice(0, 4));
-        return yearSelectionSet.has(groupYear);
-      })
-    : allGroups;
-
-  const doctrineFilteredGroups = allGroups.filter((group) =>
-    doctrineFilterMatches(group.doctrines, selectedDoctrines)
+  return buildTranscriptStudySearchResult(
+    allGroups,
+    selectedYears,
+    selectedDoctrines,
+    limit,
+    offset
   );
+}
 
-  const doctrineCounts = new Map<string, number>();
-  for (const group of yearFilteredGroups) {
-    for (const doctrine of new Set(group.doctrines)) {
-      doctrineCounts.set(doctrine, (doctrineCounts.get(doctrine) || 0) + 1);
-    }
+export async function searchTranscriptStudyByText(
+  options: TranscriptStudyTextSearchOptions
+): Promise<TranscriptStudySearchResult> {
+  const {
+    query,
+    matchMode = 'exact',
+    selectedDoctrines = [],
+    selectedYears = [],
+    limit = 8,
+    offset = 0,
+  } = options;
+
+  const normalizedQuery = normalizeSearchableText(query);
+  if (!normalizedQuery) {
+    return {
+      items: [],
+      total_items: 0,
+      has_more: false,
+      doctrine_facets: [],
+      year_facets: [],
+    };
   }
 
-  const yearCounts = new Map<string, number>();
-  for (const group of doctrineFilteredGroups) {
-    if (!group.date_preached) continue;
-    const yearText = group.date_preached.slice(0, 4);
-    if (yearText.length === 4) {
-      yearCounts.set(yearText, (yearCounts.get(yearText) || 0) + 1);
-    }
+  const candidates = await fetchTranscriptStudyTextCandidates(query);
+  const allGroups: TranscriptStudySermonGroup[] = [];
+
+  for (const candidate of candidates) {
+    const occurrences = extractTranscriptStudyTextOccurrences(
+      candidate.transcript_text,
+      query,
+      matchMode
+    );
+    if (occurrences.length === 0) continue;
+    occurrences.sort((a, b) => (b.match_count || 1) - (a.match_count || 1));
+
+    const metadata = parseMetadataSafe(candidate.llm_metadata);
+    const doctrines = getDoctrineTags(metadata);
+    const relevanceScore = occurrences.reduce((sum, item) => sum + (item.match_count || 1), 0);
+
+    allGroups.push({
+      id: candidate.id,
+      sermon_code: candidate.sermon_code,
+      title: candidate.title,
+      date_preached: candidate.date_preached,
+      primary_reference: candidate.primary_reference,
+      doctrines,
+      relevance_score: relevanceScore,
+      occurrences,
+    });
   }
 
-  const filtered = yearFilteredGroups.filter((group) =>
-    doctrineFilterMatches(group.doctrines, selectedDoctrines)
-  );
-  const paginated = filtered.slice(offset, offset + limit);
+  allGroups.sort((a, b) => {
+    const scoreDelta = (b.relevance_score || 0) - (a.relevance_score || 0);
+    if (scoreDelta !== 0) return scoreDelta;
+    return compareDatesDesc(a.date_preached, b.date_preached);
+  });
 
-  return {
-    items: paginated,
-    total_items: filtered.length,
-    has_more: offset + limit < filtered.length,
-    doctrine_facets: createSortedFacetList(doctrineCounts),
-    year_facets: createSortedFacetList(yearCounts).sort((a, b) => Number(b.value) - Number(a.value)),
-  };
+  return buildTranscriptStudySearchResult(
+    allGroups,
+    selectedYears,
+    selectedDoctrines,
+    limit,
+    offset
+  );
 }
 
 export default client;

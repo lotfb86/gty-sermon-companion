@@ -3,26 +3,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, Download } from 'lucide-react';
-import type { TranscriptStudyFacet, TranscriptStudySearchResult, TranscriptStudySermonGroup } from '@/lib/db';
+import type {
+  TranscriptStudyFacet,
+  TranscriptStudyMode,
+  TranscriptStudySearchResult,
+  TranscriptStudySermonGroup,
+  TranscriptStudyTextMatchMode,
+} from '@/lib/db';
 
 interface TranscriptStudyFeedProps {
   initialResult: TranscriptStudySearchResult;
-  book: string;
-  chapter: number;
-  verse: number;
+  mode: TranscriptStudyMode;
+  book?: string;
+  chapter?: number;
+  verse?: number;
+  textQuery?: string;
+  textMatchMode?: TranscriptStudyTextMatchMode;
   initialSelectedYears: number[];
   selectedDoctrines: string[];
   pageSize?: number;
 }
 
+const EXPORT_MAX_ITEMS = 100;
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function highlightReference(text: string, reference: string): string {
-  if (!reference) return text;
-  const regex = new RegExp(`(${escapeRegex(reference)})`, 'gi');
-  return text.replace(regex, '<mark>$1</mark>');
 }
 
 function normalizeNumberList(values: number[]): number[] {
@@ -47,19 +52,57 @@ function sameStringSelections(a: string[], b: string[]): boolean {
   return na.every((value, index) => value === nb[index]);
 }
 
+function tokenizeQuery(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function highlightScriptureReference(text: string, reference: string): string {
+  if (!reference) return text;
+  const regex = new RegExp(`(${escapeRegex(reference)})`, 'gi');
+  return text.replace(regex, '<mark>$1</mark>');
+}
+
+function highlightQueryTerms(text: string, query: string): string {
+  const terms = [...new Set(tokenizeQuery(query))].sort((a, b) => b.length - a.length);
+  if (terms.length === 0) return text;
+
+  let output = text;
+  for (const term of terms) {
+    const regex = new RegExp(`\\b(${escapeRegex(term)})\\b`, 'gi');
+    output = output.replace(regex, '<mark>$1</mark>');
+  }
+  return output;
+}
+
 function buildParams(options: {
-  book: string;
-  chapter: number;
-  verse: number;
+  mode: TranscriptStudyMode;
+  book?: string;
+  chapter?: number;
+  verse?: number;
+  query?: string;
+  matchMode?: TranscriptStudyTextMatchMode;
   years: number[];
   doctrines: string[];
   offset?: number;
   limit?: number;
 }): URLSearchParams {
   const params = new URLSearchParams();
-  params.set('book', options.book);
-  params.set('chapter', String(options.chapter));
-  params.set('verse', String(options.verse));
+  params.set('mode', options.mode);
+
+  if (options.mode === 'scripture') {
+    if (options.book) params.set('book', options.book);
+    if (options.chapter) params.set('chapter', String(options.chapter));
+    if (options.verse) params.set('verse', String(options.verse));
+  } else {
+    if (options.query) params.set('q', options.query);
+    params.set('match', options.matchMode || 'exact');
+  }
+
   for (const year of normalizeNumberList(options.years)) {
     params.append('year', String(year));
   }
@@ -102,9 +145,12 @@ function FilterSkeleton() {
 
 export default function TranscriptStudyFeed({
   initialResult,
+  mode,
   book,
   chapter,
   verse,
+  textQuery,
+  textMatchMode = 'exact',
   initialSelectedYears,
   selectedDoctrines,
   pageSize = 6,
@@ -170,9 +216,12 @@ export default function TranscriptStudyFeed({
 
       try {
         const params = buildParams({
+          mode,
           book,
           chapter,
           verse,
+          query: textQuery,
+          matchMode: textMatchMode,
           years: normalizedYears,
           doctrines: normalizedDoctrines,
           offset: 0,
@@ -195,7 +244,7 @@ export default function TranscriptStudyFeed({
         setFilterLoading(false);
       }
     },
-    [book, chapter, pageSize, verse]
+    [book, chapter, mode, pageSize, textMatchMode, textQuery, verse]
   );
 
   const applyYears = useCallback(async () => {
@@ -211,9 +260,12 @@ export default function TranscriptStudyFeed({
     setAppendLoading(true);
     try {
       const params = buildParams({
+        mode,
         book,
         chapter,
         verse,
+        query: textQuery,
+        matchMode: textMatchMode,
         years: appliedYears,
         doctrines: appliedDoctrines,
         offset: nextOffset,
@@ -244,8 +296,11 @@ export default function TranscriptStudyFeed({
     chapter,
     filterLoading,
     hasMore,
+    mode,
     nextOffset,
     pageSize,
+    textMatchMode,
+    textQuery,
     verse,
   ]);
 
@@ -270,11 +325,17 @@ export default function TranscriptStudyFeed({
   const yearsDirty = !sameNumberSelections(pendingYears, appliedYears);
   const doctrinesDirty = !sameStringSelections(pendingDoctrines, appliedDoctrines);
 
-  const selectedReference = `${book} ${chapter}:${verse}`;
+  const selectedLabel = mode === 'scripture'
+    ? `${book} ${chapter}:${verse}`
+    : (textQuery || '');
+  const matchModeLabel = textMatchMode === 'all_words' ? 'All words' : 'Exact phrase';
   const exportQuery = buildParams({
+    mode,
     book,
     chapter,
     verse,
+    query: textQuery,
+    matchMode: textMatchMode,
     years: appliedYears,
     doctrines: appliedDoctrines,
   }).toString();
@@ -282,19 +343,20 @@ export default function TranscriptStudyFeed({
   return (
     <section className="space-y-4">
       <div className="card-elevated">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-1">Bill Search Reference</div>
-        <div className="text-xl font-serif font-semibold text-[var(--gold-text)]">{selectedReference}</div>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-1">
+          {mode === 'scripture' ? 'Bill Search Reference' : 'Bill Search Query'}
+        </div>
+        <div className="text-xl font-serif font-semibold text-[var(--gold-text)]">{selectedLabel}</div>
         <div className="mt-3 flex items-end justify-between">
           <div>
             <div className="text-4xl font-bold text-[var(--accent)] leading-none">{resultMeta.total_items}</div>
             <div className="text-xs text-[var(--text-secondary)]">sermons with matching transcript context</div>
           </div>
-          {(appliedYears.length > 0 || appliedDoctrines.length > 0) && (
-            <div className="text-xs text-[var(--text-secondary)] text-right">
-              {appliedYears.length > 0 && <div>Years: <span className="text-[var(--accent)]">{appliedYears.join(', ')}</span></div>}
-              {appliedDoctrines.length > 0 && <div>Doctrines: <span className="text-[var(--accent)]">{appliedDoctrines.length}</span></div>}
-            </div>
-          )}
+          <div className="text-xs text-[var(--text-secondary)] text-right">
+            {mode === 'text' && <div>Mode: <span className="text-[var(--accent)]">{matchModeLabel}</span></div>}
+            {appliedYears.length > 0 && <div>Years: <span className="text-[var(--accent)]">{appliedYears.join(', ')}</span></div>}
+            {appliedDoctrines.length > 0 && <div>Doctrines: <span className="text-[var(--accent)]">{appliedDoctrines.length}</span></div>}
+          </div>
         </div>
       </div>
 
@@ -399,10 +461,13 @@ export default function TranscriptStudyFeed({
 
       {resultMeta.total_items > 0 && (
         <section className="card">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-1">
             <Download size={14} className="text-[var(--accent)]" />
             <span className="text-xs font-semibold text-[var(--text-primary)]">Export Feed</span>
           </div>
+          <p className="text-[11px] text-[var(--text-secondary)] mb-2">
+            Export includes the top {EXPORT_MAX_ITEMS} results for the currently applied filters.
+          </p>
           <div className="flex gap-2">
             <a href={`/api/transcript-study/export?${exportQuery}&format=pdf`} className="btn btn-secondary flex-1">PDF</a>
             <a href={`/api/transcript-study/export?${exportQuery}&format=docx`} className="btn btn-secondary flex-1">DOCX</a>
@@ -413,50 +478,69 @@ export default function TranscriptStudyFeed({
       {filterLoading ? (
         <FilterSkeleton />
       ) : items.length === 0 ? (
-        <div className="card text-sm text-[var(--text-secondary)]">No transcript references match these filters.</div>
+        <div className="card text-sm text-[var(--text-secondary)]">
+          {mode === 'scripture'
+            ? 'No transcript references match these filters.'
+            : 'No transcript paragraphs match this query and filter set.'}
+        </div>
       ) : (
         <div className="space-y-4">
-          {items.map((item) => (
-            <article key={item.id} className="card-elevated space-y-3">
-              <div className="pb-2 border-b border-white/10">
-                <h3 className="font-serif text-base font-semibold text-[var(--text-primary)]">{item.title}</h3>
-                <div className="text-xs text-[var(--text-secondary)] mt-1 flex flex-wrap gap-2">
-                  {item.date_preached && (
-                    <span>{new Date(item.date_preached).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                  )}
-                  {item.primary_reference && (
-                    <span className="text-[var(--accent)]">Primary Text: {item.primary_reference}</span>
-                  )}
-                </div>
-              </div>
+          {items.map((item) => {
+            const title = item.title?.trim() || `Untitled sermon (${item.sermon_code})`;
+            const primaryText = item.primary_reference?.trim() || 'Primary text unavailable';
 
-              <div className="space-y-3">
-                {item.occurrences.map((occurrence, index) => (
-                  <div key={`${item.id}-${index}`} className="rounded-xl border border-white/10 bg-[var(--surface)] p-3 space-y-2">
-                    <p
-                      className="text-sm leading-relaxed text-[var(--text-secondary)] [&_mark]:bg-[var(--accent)]/20 [&_mark]:text-[var(--accent)] [&_mark]:px-0.5 [&_mark]:rounded"
-                      dangerouslySetInnerHTML={{ __html: highlightReference(occurrence.paragraph, occurrence.matched_reference) }}
-                    />
-                    <div className="text-[11px] font-medium text-[var(--accent)]">
-                      Matched Reference: {occurrence.matched_reference}
-                    </div>
-                    <div className="rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] p-2.5">
-                      <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-1">How It Was Used</div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        {occurrence.usage_context || 'No usage summary available for this passage in sermon metadata.'}
-                      </p>
-                    </div>
+            return (
+              <article key={item.id} className="card-elevated space-y-3">
+                <div className="pb-2 border-b border-white/10">
+                  <h3 className="font-serif text-base font-semibold text-[var(--text-primary)]">{title}</h3>
+                  <div className="text-xs text-[var(--text-secondary)] mt-1 flex flex-wrap gap-2">
+                    {item.date_preached && (
+                      <span>{new Date(item.date_preached).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                    )}
+                    <span className="text-[var(--accent)]">Primary Text: {primaryText}</span>
                   </div>
-                ))}
-              </div>
+                </div>
 
-              <div className="pt-1">
-                <Link href={`/sermons/${item.sermon_code}?t=${encodeURIComponent(selectedReference)}`} className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors">
-                  Open sermon →
-                </Link>
-              </div>
-            </article>
-          ))}
+                <div className="space-y-3">
+                  {item.occurrences.map((occurrence, index) => (
+                    <div key={`${item.id}-${index}`} className="rounded-xl border border-white/10 bg-[var(--surface)] p-3 space-y-2">
+                      <p
+                        className="text-sm leading-relaxed text-[var(--text-secondary)] [&_mark]:bg-[var(--accent)]/20 [&_mark]:text-[var(--accent)] [&_mark]:px-0.5 [&_mark]:rounded"
+                        dangerouslySetInnerHTML={{
+                          __html: mode === 'scripture'
+                            ? highlightScriptureReference(occurrence.paragraph, occurrence.matched_reference)
+                            : highlightQueryTerms(occurrence.paragraph, textQuery || ''),
+                        }}
+                      />
+                      {mode === 'scripture' ? (
+                        <>
+                          <div className="text-[11px] font-medium text-[var(--accent)]">
+                            Matched Reference: {occurrence.matched_reference}
+                          </div>
+                          <div className="rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] p-2.5">
+                            <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-1">How It Was Used</div>
+                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                              {occurrence.usage_context || 'No usage summary available for this passage in sermon metadata.'}
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-[11px] font-medium text-[var(--accent)]">
+                          Match Hits: {occurrence.match_count || 1}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-1">
+                  <Link href={`/sermons/${item.sermon_code}?t=${encodeURIComponent(selectedLabel)}`} className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors">
+                    Open sermon →
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
 
           {appendLoading && <div className="card animate-pulse h-24" />}
           {hasMore && <div ref={sentinelRef} className="h-1" />}

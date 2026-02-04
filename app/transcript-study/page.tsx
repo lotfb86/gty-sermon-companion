@@ -2,6 +2,9 @@ import { BookOpen, Search } from 'lucide-react';
 import {
   parseScriptureQuery,
   searchTranscriptStudyByReference,
+  searchTranscriptStudyByText,
+  type TranscriptStudyMode,
+  type TranscriptStudyTextMatchMode,
 } from '@/lib/db';
 import TranscriptStudyFeed from '@/components/transcript-study/TranscriptStudyFeed';
 
@@ -72,12 +75,25 @@ function sortBooksByCanonicalOrder(books: string[]): string[] {
   });
 }
 
+function normalizeMode(value: string | undefined): TranscriptStudyMode {
+  return value === 'text' ? 'text' : 'scripture';
+}
+
+function normalizeTextMatchMode(value: string | undefined): TranscriptStudyTextMatchMode {
+  return value === 'all_words' ? 'all_words' : 'exact';
+}
+
 export default async function TranscriptStudyPage({ searchParams }: PageProps) {
   const params = await searchParams;
+  const searchMode = normalizeMode(getSingleParam(params.mode));
 
   const rawBookInput = (getSingleParam(params.book) || '').trim();
   const selectedChapter = getNumberParam(params.chapter);
   const selectedVerse = getNumberParam(params.verse);
+
+  const textQuery = (getSingleParam(params.q) || '').trim();
+  const textMatchMode = normalizeTextMatchMode(getSingleParam(params.match));
+
   const selectedYears = getMultiNumberParams(params.year);
   const selectedDoctrines = unique(getMultiParams(params.doctrine));
 
@@ -89,22 +105,35 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
 
   const chapterIsValid = selectedChapter !== undefined && selectedChapter > 0;
   const verseIsValid = selectedVerse !== undefined && selectedVerse > 0;
-  const canRunSearch = Boolean(normalizedBook && chapterIsValid && verseIsValid);
+  const canRunScriptureSearch = Boolean(normalizedBook && chapterIsValid && verseIsValid);
+  const canRunTextSearch = textQuery.length > 0;
+  const canRunSearch = searchMode === 'text' ? canRunTextSearch : canRunScriptureSearch;
 
   let results: Awaited<ReturnType<typeof searchTranscriptStudyByReference>> | null = null;
   let loadError: string | null = null;
 
   if (canRunSearch) {
     try {
-      results = await searchTranscriptStudyByReference({
-        book: normalizedBook!,
-        chapter: selectedChapter!,
-        verse: selectedVerse!,
-        selectedDoctrines,
-        selectedYears,
-        limit: PAGE_SIZE,
-        offset: 0,
-      });
+      if (searchMode === 'text') {
+        results = await searchTranscriptStudyByText({
+          query: textQuery,
+          matchMode: textMatchMode,
+          selectedDoctrines,
+          selectedYears,
+          limit: PAGE_SIZE,
+          offset: 0,
+        });
+      } else {
+        results = await searchTranscriptStudyByReference({
+          book: normalizedBook!,
+          chapter: selectedChapter!,
+          verse: selectedVerse!,
+          selectedDoctrines,
+          selectedYears,
+          limit: PAGE_SIZE,
+          offset: 0,
+        });
+      }
     } catch {
       loadError = 'Bill Search hit a temporary connection issue. Please retry the same filter.';
     }
@@ -123,66 +152,130 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         <section className="card-elevated space-y-3">
           <div className="flex items-center gap-2">
             <Search size={16} className="text-[var(--accent)]" />
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Reference Picker</h2>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Search Mode</h2>
           </div>
-          <form action="/transcript-study" method="GET" className="space-y-3">
-            <div className="grid grid-cols-3 gap-2">
-              <label className="text-xs text-[var(--text-secondary)]">
-                <span className="mb-1 block">Book</span>
+
+          <div className="grid grid-cols-2 gap-2">
+            <a
+              href="/transcript-study?mode=scripture"
+              className={`btn ${searchMode === 'scripture' ? 'btn-primary' : 'btn-secondary'} text-center`}
+            >
+              Search by Scripture
+            </a>
+            <a
+              href="/transcript-study?mode=text&match=exact"
+              className={`btn ${searchMode === 'text' ? 'btn-primary' : 'btn-secondary'} text-center`}
+            >
+              Search by Word/Phrase
+            </a>
+          </div>
+
+          {searchMode === 'text' ? (
+            <form action="/transcript-study" method="GET" className="space-y-3">
+              <input type="hidden" name="mode" value="text" />
+
+              <label className="text-xs text-[var(--text-secondary)] block">
+                <span className="mb-1 block">Word or Phrase</span>
                 <input
-                  name="book"
-                  list="bill-book-options"
-                  placeholder="Romans"
-                  defaultValue={rawBookInput}
+                  name="q"
+                  placeholder="repent and be baptized"
+                  defaultValue={textQuery}
                   className="input py-2 px-3 text-sm h-11"
                   autoComplete="off"
                 />
-                <datalist id="bill-book-options">
-                  {availableBooks.map((book) => (
-                    <option key={book} value={book} />
-                  ))}
-                </datalist>
               </label>
 
-              <label className="text-xs text-[var(--text-secondary)]">
-                <span className="mb-1 block">Chapter</span>
-                <input
-                  name="chapter"
-                  type="number"
-                  min={1}
-                  placeholder="12"
-                  defaultValue={selectedChapter ? String(selectedChapter) : ''}
-                  className="input py-2 px-3 text-sm h-11"
-                />
-              </label>
+              <fieldset className="space-y-2">
+                <legend className="text-xs text-[var(--text-secondary)]">Match Mode</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="tag flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="match"
+                      value="exact"
+                      defaultChecked={textMatchMode === 'exact'}
+                    />
+                    <span>Exact phrase</span>
+                  </label>
+                  <label className="tag flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="match"
+                      value="all_words"
+                      defaultChecked={textMatchMode === 'all_words'}
+                    />
+                    <span>All words</span>
+                  </label>
+                </div>
+              </fieldset>
 
-              <label className="text-xs text-[var(--text-secondary)]">
-                <span className="mb-1 block">Verse</span>
-                <input
-                  name="verse"
-                  type="number"
-                  min={1}
-                  placeholder="2"
-                  defaultValue={selectedVerse ? String(selectedVerse) : ''}
-                  className="input py-2 px-3 text-sm h-11"
-                />
-              </label>
-            </div>
-            <button type="submit" className="btn btn-primary w-full">
-              Run Bill Search
-            </button>
-          </form>
+              <button type="submit" className="btn btn-primary w-full">
+                Run Bill Search
+              </button>
+            </form>
+          ) : (
+            <form action="/transcript-study" method="GET" className="space-y-3">
+              <input type="hidden" name="mode" value="scripture" />
+              <div className="grid grid-cols-3 gap-2">
+                <label className="text-xs text-[var(--text-secondary)]">
+                  <span className="mb-1 block">Book</span>
+                  <input
+                    name="book"
+                    list="bill-book-options"
+                    placeholder="Romans"
+                    defaultValue={rawBookInput}
+                    className="input py-2 px-3 text-sm h-11"
+                    autoComplete="off"
+                  />
+                  <datalist id="bill-book-options">
+                    {availableBooks.map((book) => (
+                      <option key={book} value={book} />
+                    ))}
+                  </datalist>
+                </label>
+
+                <label className="text-xs text-[var(--text-secondary)]">
+                  <span className="mb-1 block">Chapter</span>
+                  <input
+                    name="chapter"
+                    type="number"
+                    min={1}
+                    placeholder="12"
+                    defaultValue={selectedChapter ? String(selectedChapter) : ''}
+                    className="input py-2 px-3 text-sm h-11"
+                  />
+                </label>
+
+                <label className="text-xs text-[var(--text-secondary)]">
+                  <span className="mb-1 block">Verse</span>
+                  <input
+                    name="verse"
+                    type="number"
+                    min={1}
+                    placeholder="2"
+                    defaultValue={selectedVerse ? String(selectedVerse) : ''}
+                    className="input py-2 px-3 text-sm h-11"
+                  />
+                </label>
+              </div>
+              <button type="submit" className="btn btn-primary w-full">
+                Run Bill Search
+              </button>
+            </form>
+          )}
         </section>
 
-        {rawBookInput && !normalizedBook && (
+        {searchMode === 'scripture' && rawBookInput && !normalizedBook && (
           <div className="card text-sm text-[var(--text-secondary)]">
             Book name not recognized. Try a canonical name like <span className="text-[var(--accent)]">James</span>.
           </div>
         )}
 
-        {!canRunSearch && !rawBookInput && (
+        {!canRunSearch && (
           <div className="card text-sm text-[var(--text-secondary)]">
-            Enter book, chapter, and verse to run Bill Search.
+            {searchMode === 'text'
+              ? 'Enter a word or phrase to run Bill Search.'
+              : 'Enter book, chapter, and verse to run Bill Search.'}
           </div>
         )}
 
@@ -195,9 +288,12 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         {results && (
           <TranscriptStudyFeed
             initialResult={results}
-            book={normalizedBook!}
-            chapter={selectedChapter!}
-            verse={selectedVerse!}
+            mode={searchMode}
+            book={normalizedBook}
+            chapter={selectedChapter}
+            verse={selectedVerse}
+            textQuery={textQuery}
+            textMatchMode={textMatchMode}
             initialSelectedYears={selectedYears}
             selectedDoctrines={selectedDoctrines}
             pageSize={PAGE_SIZE}
@@ -210,7 +306,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
             <span className="text-xs font-semibold text-[var(--text-primary)]">How Bill Search Works</span>
           </div>
           <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-            Bill Search scans transcripts for explicit references that contain your chosen verse, then groups every matching paragraph by sermon with the metadata usage summary.
+            Scripture mode finds explicit references that contain your selected verse. Word/Phrase mode finds paragraph context across transcripts, using exact phrase matching or all-words matching.
           </p>
         </section>
       </main>
