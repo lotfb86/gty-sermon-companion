@@ -345,7 +345,7 @@ export default function TranscriptStudyFeed({
     <section className="space-y-4">
       <div className="card-elevated">
         <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-1">
-          {mode === 'scripture' ? 'Bill Search Reference' : 'Bill Search Query'}
+          {mode === 'scripture' ? 'Transcript Reference' : 'Transcript Query'}
         </div>
         <div className="text-xl font-serif font-semibold text-[var(--gold-text)]">{selectedLabel}</div>
         <div className="mt-3 flex items-end justify-between">

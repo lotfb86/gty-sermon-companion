@@ -62,7 +62,7 @@ function buildPdfBuffer(options: {
     y += spacingAfter;
   };
 
-  addBlock(`Bill Search Export — ${options.queryLabel}`, 16, [30, 30, 30], 2, true);
+  addBlock(`Transcript Search Export — ${options.queryLabel}`, 16, [30, 30, 30], 2, true);
   addBlock(`Generated ${options.generatedAt}`, 9, [110, 110, 110], 1);
   addBlock(
     `Filters: ${options.years.length > 0 ? `Years ${options.years.join(', ')}` : 'All years'} • ${options.doctrines.length > 0 ? options.doctrines.join(', ') : 'All doctrines'}`,
@@ -116,7 +116,7 @@ async function buildDocxBuffer(options: {
 }): Promise<Uint8Array> {
   const children: Paragraph[] = [
     new Paragraph({
-      text: `Bill Search Export — ${options.queryLabel}`,
+      text: `Transcript Search Export — ${options.queryLabel}`,
       heading: HeadingLevel.HEADING_1,
     }),
     new Paragraph({

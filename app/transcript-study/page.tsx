@@ -135,14 +135,14 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         });
       }
     } catch {
-      loadError = 'Bill Search hit a temporary connection issue. Please retry the same filter.';
+      loadError = 'Transcript search hit a temporary connection issue. Please retry the same filter.';
     }
   }
 
   return (
     <div className="pb-32 animate-fade-in">
       <header className="px-4 pt-10 pb-3 glass sticky top-0 z-40 border-b border-white/5">
-        <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Bill Search</h1>
+        <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Transcript</h1>
         <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">
           Transcript Study
         </p>
@@ -210,7 +210,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
               </fieldset>
 
               <button type="submit" className="btn btn-primary w-full">
-                Run Bill Search
+                Run Transcript Search
               </button>
             </form>
           ) : (
@@ -259,7 +259,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
                 </label>
               </div>
               <button type="submit" className="btn btn-primary w-full">
-                Run Bill Search
+                Run Transcript Search
               </button>
             </form>
           )}
@@ -274,8 +274,8 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         {!canRunSearch && (
           <div className="card text-sm text-[var(--text-secondary)]">
             {searchMode === 'text'
-              ? 'Enter a word or phrase to run Bill Search.'
-              : 'Enter book, chapter, and verse to run Bill Search.'}
+              ? 'Enter a word or phrase to run transcript search.'
+              : 'Enter book, chapter, and verse to run transcript search.'}
           </div>
         )}
 
@@ -303,7 +303,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         <section className="card">
           <div className="flex items-center gap-2 mb-1.5">
             <BookOpen size={14} className="text-[var(--accent)]" />
-            <span className="text-xs font-semibold text-[var(--text-primary)]">How Bill Search Works</span>
+            <span className="text-xs font-semibold text-[var(--text-primary)]">How Transcript Search Works</span>
           </div>
           <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
             Scripture mode finds explicit references that contain your selected verse. Word/Phrase mode finds paragraph context across transcripts, using exact phrase matching or all-words matching.
