@@ -1,4 +1,4 @@
-import { BookOpen, Download, Search } from 'lucide-react';
+import { BookOpen, Search } from 'lucide-react';
 import {
   parseScriptureQuery,
   searchTranscriptStudyByReference,
@@ -48,6 +48,13 @@ function getMultiParams(value: string | string[] | undefined): string[] {
   return [value].filter((item) => item.trim().length > 0);
 }
 
+function getMultiNumberParams(value: string | string[] | undefined): number[] {
+  const values = getMultiParams(value)
+    .map((item) => parseInt(item, 10))
+    .filter((item) => !Number.isNaN(item));
+  return [...new Set(values)];
+}
+
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -65,31 +72,13 @@ function sortBooksByCanonicalOrder(books: string[]): string[] {
   });
 }
 
-function buildExportQuery(options: {
-  book: string;
-  chapter: number;
-  verse: number;
-  year?: number;
-  doctrines: string[];
-}): string {
-  const params = new URLSearchParams();
-  params.set('book', options.book);
-  params.set('chapter', String(options.chapter));
-  params.set('verse', String(options.verse));
-  if (options.year) params.set('year', String(options.year));
-  for (const doctrine of options.doctrines) {
-    params.append('doctrine', doctrine);
-  }
-  return params.toString();
-}
-
 export default async function TranscriptStudyPage({ searchParams }: PageProps) {
   const params = await searchParams;
 
   const rawBookInput = (getSingleParam(params.book) || '').trim();
   const selectedChapter = getNumberParam(params.chapter);
   const selectedVerse = getNumberParam(params.verse);
-  const selectedYear = getNumberParam(params.year);
+  const selectedYears = getMultiNumberParams(params.year);
   const selectedDoctrines = unique(getMultiParams(params.doctrine));
 
   const normalizedBook = rawBookInput
@@ -112,7 +101,7 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         chapter: selectedChapter!,
         verse: selectedVerse!,
         selectedDoctrines,
-        year: selectedYear,
+        selectedYears,
         limit: PAGE_SIZE,
         offset: 0,
       });
@@ -120,16 +109,6 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
       loadError = 'Bill Search hit a temporary connection issue. Please retry the same filter.';
     }
   }
-
-  const exportQuery = canRunSearch
-    ? buildExportQuery({
-        book: normalizedBook!,
-        chapter: selectedChapter!,
-        verse: selectedVerse!,
-        year: selectedYear,
-        doctrines: selectedDoctrines,
-      })
-    : '';
 
   return (
     <div className="pb-32 animate-fade-in">
@@ -214,40 +193,15 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         )}
 
         {results && (
-          <>
-            <TranscriptStudyFeed
-              initialResult={results}
-              book={normalizedBook!}
-              chapter={selectedChapter!}
-              verse={selectedVerse!}
-              year={selectedYear}
-              selectedDoctrines={selectedDoctrines}
-              pageSize={PAGE_SIZE}
-            />
-
-            {results.total_items > 0 && (
-              <section className="card-elevated space-y-3" id="export-feed">
-                <div className="flex items-center gap-2">
-                  <Download size={16} className="text-[var(--accent)]" />
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Export This Feed</h3>
-                </div>
-                <div className="flex gap-2">
-                  <a
-                    href={`/api/transcript-study/export?${exportQuery}&format=pdf`}
-                    className="btn btn-secondary flex-1"
-                  >
-                    PDF
-                  </a>
-                  <a
-                    href={`/api/transcript-study/export?${exportQuery}&format=docx`}
-                    className="btn btn-secondary flex-1"
-                  >
-                    DOCX
-                  </a>
-                </div>
-              </section>
-            )}
-          </>
+          <TranscriptStudyFeed
+            initialResult={results}
+            book={normalizedBook!}
+            chapter={selectedChapter!}
+            verse={selectedVerse!}
+            initialSelectedYears={selectedYears}
+            selectedDoctrines={selectedDoctrines}
+            pageSize={PAGE_SIZE}
+          />
         )}
 
         <section className="card">

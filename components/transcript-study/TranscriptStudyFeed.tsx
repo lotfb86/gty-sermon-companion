@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Download } from 'lucide-react';
 import type { TranscriptStudyFacet, TranscriptStudySearchResult, TranscriptStudySermonGroup } from '@/lib/db';
 
 interface TranscriptStudyFeedProps {
@@ -10,7 +10,7 @@ interface TranscriptStudyFeedProps {
   book: string;
   chapter: number;
   verse: number;
-  year?: number;
+  initialSelectedYears: number[];
   selectedDoctrines: string[];
   pageSize?: number;
 }
@@ -25,29 +25,16 @@ function highlightReference(text: string, reference: string): string {
   return text.replace(regex, '<mark>$1</mark>');
 }
 
-function buildHref(options: {
-  book: string;
-  chapter: number;
-  verse: number;
-  year?: number;
-  doctrines?: string[];
-}): string {
-  const params = new URLSearchParams();
-  params.set('book', options.book);
-  params.set('chapter', String(options.chapter));
-  params.set('verse', String(options.verse));
-  if (options.year) params.set('year', String(options.year));
-  for (const doctrine of options.doctrines || []) {
-    params.append('doctrine', doctrine);
-  }
-  return `/transcript-study?${params.toString()}`;
+function normalizeNumberList(values: number[]): number[] {
+  return [...new Set(values)].sort((a, b) => a - b);
 }
 
-function toggleDoctrine(selected: string[], doctrine: string): string[] {
-  if (selected.includes(doctrine)) {
-    return selected.filter((item) => item !== doctrine);
-  }
-  return [...selected, doctrine];
+function normalizeStringList(values: string[]): string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+function listKey(numbers: number[], strings: string[]): string {
+  return `${normalizeNumberList(numbers).join(',')}|${normalizeStringList(strings).join('|')}`;
 }
 
 function mergeBySermonCode(existing: TranscriptStudySermonGroup[], incoming: TranscriptStudySermonGroup[]): TranscriptStudySermonGroup[] {
@@ -63,57 +50,167 @@ function mergeBySermonCode(existing: TranscriptStudySermonGroup[], incoming: Tra
   return [...map.values()];
 }
 
+function toggleYear(selected: number[], year: number): number[] {
+  if (selected.includes(year)) {
+    return selected.filter((item) => item !== year);
+  }
+  return [...selected, year];
+}
+
+function toggleDoctrine(selected: string[], doctrine: string): string[] {
+  if (selected.includes(doctrine)) {
+    return selected.filter((item) => item !== doctrine);
+  }
+  return [...selected, doctrine];
+}
+
+function buildSearchParams(options: {
+  book: string;
+  chapter: number;
+  verse: number;
+  years: number[];
+  doctrines: string[];
+  offset?: number;
+  limit?: number;
+}): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set('book', options.book);
+  params.set('chapter', String(options.chapter));
+  params.set('verse', String(options.verse));
+  for (const year of normalizeNumberList(options.years)) {
+    params.append('year', String(year));
+  }
+  for (const doctrine of normalizeStringList(options.doctrines)) {
+    params.append('doctrine', doctrine);
+  }
+  if ((options.offset || 0) > 0) params.set('offset', String(options.offset));
+  if (options.limit) params.set('limit', String(options.limit));
+  return params;
+}
+
+function FilterSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[1, 2, 3].map((id) => (
+        <div key={id} className="card-elevated animate-pulse h-28" />
+      ))}
+    </div>
+  );
+}
+
 export default function TranscriptStudyFeed({
   initialResult,
   book,
   chapter,
   verse,
-  year,
+  initialSelectedYears,
   selectedDoctrines,
   pageSize = 6,
 }: TranscriptStudyFeedProps) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const initialFilterKeyRef = useRef(listKey(initialSelectedYears, selectedDoctrines));
+
+  const [activeYears, setActiveYears] = useState<number[]>(normalizeNumberList(initialSelectedYears));
+  const [activeDoctrines, setActiveDoctrines] = useState<string[]>(normalizeStringList(selectedDoctrines));
 
   const [items, setItems] = useState<TranscriptStudySermonGroup[]>(initialResult.items);
   const [hasMore, setHasMore] = useState(initialResult.has_more);
   const [nextOffset, setNextOffset] = useState(initialResult.items.length);
-  const [loading, setLoading] = useState(false);
+  const [resultMeta, setResultMeta] = useState<TranscriptStudySearchResult>(initialResult);
+
+  const [filterLoading, setFilterLoading] = useState(false);
+  const [appendLoading, setAppendLoading] = useState(false);
   const [showAllDoctrines, setShowAllDoctrines] = useState(false);
   const [showAllYears, setShowAllYears] = useState(false);
 
+  const activeFilterKey = listKey(activeYears, activeDoctrines);
+  const loadedFilterKeyRef = useRef(activeFilterKey);
+
   useEffect(() => {
+    const normalizedYears = normalizeNumberList(initialSelectedYears);
+    const normalizedDoctrines = normalizeStringList(selectedDoctrines);
+    const key = listKey(normalizedYears, normalizedDoctrines);
+
+    initialFilterKeyRef.current = key;
+    loadedFilterKeyRef.current = key;
+
+    setActiveYears(normalizedYears);
+    setActiveDoctrines(normalizedDoctrines);
+    setResultMeta(initialResult);
     setItems(initialResult.items);
     setHasMore(initialResult.has_more);
     setNextOffset(initialResult.items.length);
-    setLoading(false);
-  }, [initialResult]);
+    setFilterLoading(false);
+    setAppendLoading(false);
+  }, [initialResult, initialSelectedYears, selectedDoctrines]);
 
   const sortedDoctrines = useMemo(
-    () => [...initialResult.doctrine_facets].sort((a, b) => a.value.localeCompare(b.value)),
-    [initialResult.doctrine_facets]
+    () => [...resultMeta.doctrine_facets].sort((a, b) => a.value.localeCompare(b.value)),
+    [resultMeta.doctrine_facets]
   );
   const visibleDoctrines = showAllDoctrines ? sortedDoctrines : sortedDoctrines.slice(0, 5);
+
   const sortedYears = useMemo(
-    () => [...initialResult.year_facets].sort((a, b) => Number(b.value) - Number(a.value)),
-    [initialResult.year_facets]
+    () => [...resultMeta.year_facets].sort((a, b) => Number(b.value) - Number(a.value)),
+    [resultMeta.year_facets]
   );
   const visibleYears = showAllYears ? sortedYears : sortedYears.slice(0, 5);
 
+  const runFilteredFetch = useCallback(async () => {
+    const params = buildSearchParams({
+      book,
+      chapter,
+      verse,
+      years: activeYears,
+      doctrines: activeDoctrines,
+      limit: pageSize,
+      offset: 0,
+    });
+
+    const response = await fetch(`/api/transcript-study/search?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch filtered results');
+    }
+
+    const data = (await response.json()) as TranscriptStudySearchResult;
+    setResultMeta(data);
+    setItems(data.items || []);
+    setHasMore(Boolean(data.has_more));
+    setNextOffset((data.items || []).length);
+    loadedFilterKeyRef.current = listKey(activeYears, activeDoctrines);
+    window.history.replaceState({}, '', `/transcript-study?${params.toString()}`);
+  }, [activeDoctrines, activeYears, book, chapter, pageSize, verse]);
+
+  useEffect(() => {
+    if (activeFilterKey === loadedFilterKeyRef.current) return;
+
+    setFilterLoading(true);
+    setItems([]);
+    setHasMore(false);
+    setNextOffset(0);
+
+    const timer = setTimeout(() => {
+      runFilteredFetch()
+        .finally(() => setFilterLoading(false));
+    }, 320);
+
+    return () => clearTimeout(timer);
+  }, [activeFilterKey, runFilteredFetch]);
+
   const fetchMore = useCallback(async () => {
-    if (loading || !hasMore) return;
-    setLoading(true);
+    if (appendLoading || !hasMore || filterLoading) return;
+    setAppendLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set('book', book);
-      params.set('chapter', String(chapter));
-      params.set('verse', String(verse));
-      params.set('offset', String(nextOffset));
-      params.set('limit', String(pageSize));
-      if (year) params.set('year', String(year));
-      for (const doctrine of selectedDoctrines) {
-        params.append('doctrine', doctrine);
-      }
+      const params = buildSearchParams({
+        book,
+        chapter,
+        verse,
+        years: activeYears,
+        doctrines: activeDoctrines,
+        limit: pageSize,
+        offset: nextOffset,
+      });
 
       const response = await fetch(`/api/transcript-study/search?${params.toString()}`);
       if (!response.ok) return;
@@ -122,13 +219,20 @@ export default function TranscriptStudyFeed({
       setItems((prev) => mergeBySermonCode(prev, data.items || []));
       setHasMore(Boolean(data.has_more));
       setNextOffset((prev) => prev + (data.items?.length || 0));
+      setResultMeta((prev) => ({
+        ...prev,
+        total_items: data.total_items,
+        has_more: data.has_more,
+        doctrine_facets: data.doctrine_facets,
+        year_facets: data.year_facets,
+      }));
     } finally {
-      setLoading(false);
+      setAppendLoading(false);
     }
-  }, [loading, hasMore, book, chapter, verse, nextOffset, pageSize, year, selectedDoctrines]);
+  }, [activeDoctrines, activeYears, appendLoading, book, chapter, filterLoading, hasMore, nextOffset, pageSize, verse]);
 
   useEffect(() => {
-    if (!hasMore) return;
+    if (!hasMore || filterLoading) return;
     const target = sentinelRef.current;
     if (!target) return;
 
@@ -143,24 +247,31 @@ export default function TranscriptStudyFeed({
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMore, fetchMore]);
+  }, [fetchMore, filterLoading, hasMore]);
 
   const selectedReference = `${book} ${chapter}:${verse}`;
-  const hasDoctrineFilter = sortedDoctrines.length > 0;
+  const exportQuery = buildSearchParams({
+    book,
+    chapter,
+    verse,
+    years: activeYears,
+    doctrines: activeDoctrines,
+  }).toString();
 
   return (
     <section className="space-y-4">
       <div className="card-elevated">
         <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-1">Bill Search Reference</div>
-        <div className="text-lg font-serif font-semibold text-[var(--gold-text)]">{selectedReference}</div>
+        <div className="text-xl font-serif font-semibold text-[var(--gold-text)]">{selectedReference}</div>
         <div className="mt-3 flex items-end justify-between">
           <div>
-            <div className="text-3xl font-bold text-[var(--accent)] leading-none">{initialResult.total_items}</div>
+            <div className="text-4xl font-bold text-[var(--accent)] leading-none">{resultMeta.total_items}</div>
             <div className="text-xs text-[var(--text-secondary)]">sermons with matching transcript context</div>
           </div>
-          {year && (
-            <div className="text-xs text-[var(--text-secondary)]">
-              Year filter: <span className="text-[var(--accent)]">{year}</span>
+          {(activeYears.length > 0 || activeDoctrines.length > 0) && (
+            <div className="text-xs text-[var(--text-secondary)] text-right">
+              {activeYears.length > 0 && <div>Years: <span className="text-[var(--accent)]">{activeYears.join(', ')}</span></div>}
+              {activeDoctrines.length > 0 && <div>Doctrines: <span className="text-[var(--accent)]">{activeDoctrines.length}</span></div>}
             </div>
           )}
         </div>
@@ -168,27 +279,27 @@ export default function TranscriptStudyFeed({
 
       {sortedYears.length > 0 && (
         <div className="card p-3 space-y-2">
-          <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-[0.15em]">
-            Year Filter
-          </div>
+          <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-[0.15em]">Year Filter</div>
           <div className="flex flex-wrap gap-2">
-            <Link
-              href={buildHref({ book, chapter, verse, doctrines: selectedDoctrines })}
-              className={`tag ${year === undefined ? 'tag-active' : ''}`}
+            <button
+              type="button"
+              onClick={() => setActiveYears([])}
+              className={`tag ${activeYears.length === 0 ? 'tag-active' : ''}`}
             >
               All Years
-            </Link>
+            </button>
             {visibleYears.map((facet: TranscriptStudyFacet) => {
-              const facetYear = Number(facet.value);
-              const active = year === facetYear;
+              const yearValue = Number(facet.value);
+              const active = activeYears.includes(yearValue);
               return (
-                <Link
+                <button
                   key={facet.value}
-                  href={buildHref({ book, chapter, verse, year: facetYear, doctrines: selectedDoctrines })}
+                  type="button"
+                  onClick={() => setActiveYears((prev) => toggleYear(prev, yearValue))}
                   className={`tag ${active ? 'tag-active' : ''}`}
                 >
                   {facet.value} ({facet.count})
-                </Link>
+                </button>
               );
             })}
           </div>
@@ -204,29 +315,28 @@ export default function TranscriptStudyFeed({
         </div>
       )}
 
-      {hasDoctrineFilter && (
+      {sortedDoctrines.length > 0 && (
         <div className="card p-3 space-y-2">
-          <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-[0.15em]">
-            Doctrine Filter
-          </div>
+          <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-[0.15em]">Doctrine Filter</div>
           <div className="flex flex-wrap gap-2">
-            <Link
-              href={buildHref({ book, chapter, verse, year, doctrines: [] })}
-              className={`tag ${selectedDoctrines.length === 0 ? 'tag-active' : ''}`}
+            <button
+              type="button"
+              onClick={() => setActiveDoctrines([])}
+              className={`tag ${activeDoctrines.length === 0 ? 'tag-active' : ''}`}
             >
               All Doctrines
-            </Link>
+            </button>
             {visibleDoctrines.map((facet: TranscriptStudyFacet) => {
-              const active = selectedDoctrines.includes(facet.value);
-              const nextDoctrines = toggleDoctrine(selectedDoctrines, facet.value);
+              const active = activeDoctrines.includes(facet.value);
               return (
-                <Link
+                <button
                   key={facet.value}
-                  href={buildHref({ book, chapter, verse, year, doctrines: nextDoctrines })}
+                  type="button"
+                  onClick={() => setActiveDoctrines((prev) => toggleDoctrine(prev, facet.value))}
                   className={`tag ${active ? 'tag-active' : ''}`}
                 >
                   {facet.value} ({facet.count})
-                </Link>
+                </button>
               );
             })}
           </div>
@@ -242,10 +352,23 @@ export default function TranscriptStudyFeed({
         </div>
       )}
 
-      {items.length === 0 ? (
-        <div className="card text-sm text-[var(--text-secondary)]">
-          No transcript references match these filters.
-        </div>
+      {resultMeta.total_items > 0 && (
+        <section className="card">
+          <div className="flex items-center gap-2 mb-2">
+            <Download size={14} className="text-[var(--accent)]" />
+            <span className="text-xs font-semibold text-[var(--text-primary)]">Export Feed</span>
+          </div>
+          <div className="flex gap-2">
+            <a href={`/api/transcript-study/export?${exportQuery}&format=pdf`} className="btn btn-secondary flex-1">PDF</a>
+            <a href={`/api/transcript-study/export?${exportQuery}&format=docx`} className="btn btn-secondary flex-1">DOCX</a>
+          </div>
+        </section>
+      )}
+
+      {filterLoading ? (
+        <FilterSkeleton />
+      ) : items.length === 0 ? (
+        <div className="card text-sm text-[var(--text-secondary)]">No transcript references match these filters.</div>
       ) : (
         <div className="space-y-4">
           {items.map((item) => (
@@ -273,9 +396,7 @@ export default function TranscriptStudyFeed({
                       Matched Reference: {occurrence.matched_reference}
                     </div>
                     <div className="rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] p-2.5">
-                      <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-1">
-                        How It Was Used
-                      </div>
+                      <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-1">How It Was Used</div>
                       <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                         {occurrence.usage_context || 'No usage summary available for this passage in sermon metadata.'}
                       </p>
@@ -292,16 +413,13 @@ export default function TranscriptStudyFeed({
             </article>
           ))}
 
-          {loading && (
-            <div className="card animate-pulse h-24" />
-          )}
-
+          {appendLoading && <div className="card animate-pulse h-24" />}
           {hasMore && <div ref={sentinelRef} className="h-1" />}
           <div ref={bottomRef} />
         </div>
       )}
 
-      {items.length > 2 && (
+      {items.length > 2 && !filterLoading && (
         <button
           type="button"
           onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })}

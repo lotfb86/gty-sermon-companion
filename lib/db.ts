@@ -1774,7 +1774,7 @@ export interface TranscriptStudySearchOptions {
   chapter: number;
   verse: number;
   selectedDoctrines?: string[];
-  year?: number;
+  selectedYears?: number[];
   limit?: number;
   offset?: number;
 }
@@ -2068,7 +2068,7 @@ export async function searchTranscriptStudyByReference(
     chapter,
     verse,
     selectedDoctrines = [],
-    year,
+    selectedYears = [],
     limit = 8,
     offset = 0,
   } = options;
@@ -2076,15 +2076,11 @@ export async function searchTranscriptStudyByReference(
   const scriptureRef: ParsedScriptureQuery = { book, chapter, verse };
   const candidates = await fetchTranscriptStudyCandidates(book, chapter);
   const allGroups: TranscriptStudySermonGroup[] = [];
-  const doctrineCounts = new Map<string, number>();
-  const yearCounts = new Map<string, number>();
+
+  const yearSelectionSet = new Set(selectedYears.map((value) => Number(value)).filter((value) => !Number.isNaN(value)));
 
   for (const candidate of candidates) {
     if (!transcriptContainsScriptureVerse(candidate.transcript_text, scriptureRef)) {
-      continue;
-    }
-
-    if (year && candidate.date_preached?.slice(0, 4) !== String(year)) {
       continue;
     }
 
@@ -2115,17 +2111,6 @@ export async function searchTranscriptStudyByReference(
 
     if (occurrences.length === 0) continue;
 
-    for (const doctrine of new Set(doctrines)) {
-      doctrineCounts.set(doctrine, (doctrineCounts.get(doctrine) || 0) + 1);
-    }
-
-    if (candidate.date_preached) {
-      const yearText = candidate.date_preached.slice(0, 4);
-      if (yearText.length === 4) {
-        yearCounts.set(yearText, (yearCounts.get(yearText) || 0) + 1);
-      }
-    }
-
     allGroups.push({
       id: candidate.id,
       sermon_code: candidate.sermon_code,
@@ -2137,7 +2122,37 @@ export async function searchTranscriptStudyByReference(
     });
   }
 
-  const filtered = allGroups.filter((group) => doctrineFilterMatches(group.doctrines, selectedDoctrines));
+  const yearFilteredGroups = yearSelectionSet.size > 0
+    ? allGroups.filter((group) => {
+        if (!group.date_preached) return false;
+        const groupYear = Number(group.date_preached.slice(0, 4));
+        return yearSelectionSet.has(groupYear);
+      })
+    : allGroups;
+
+  const doctrineFilteredGroups = allGroups.filter((group) =>
+    doctrineFilterMatches(group.doctrines, selectedDoctrines)
+  );
+
+  const doctrineCounts = new Map<string, number>();
+  for (const group of yearFilteredGroups) {
+    for (const doctrine of new Set(group.doctrines)) {
+      doctrineCounts.set(doctrine, (doctrineCounts.get(doctrine) || 0) + 1);
+    }
+  }
+
+  const yearCounts = new Map<string, number>();
+  for (const group of doctrineFilteredGroups) {
+    if (!group.date_preached) continue;
+    const yearText = group.date_preached.slice(0, 4);
+    if (yearText.length === 4) {
+      yearCounts.set(yearText, (yearCounts.get(yearText) || 0) + 1);
+    }
+  }
+
+  const filtered = yearFilteredGroups.filter((group) =>
+    doctrineFilterMatches(group.doctrines, selectedDoctrines)
+  );
   const paginated = filtered.slice(offset, offset + limit);
 
   return {

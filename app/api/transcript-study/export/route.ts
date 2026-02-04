@@ -19,7 +19,7 @@ function sanitizeFilename(value: string): string {
 
 function buildPdfBuffer(options: {
   reference: string;
-  year?: number;
+  years: number[];
   doctrines: string[];
   generatedAt: string;
   items: Awaited<ReturnType<typeof searchTranscriptStudyByReference>>['items'];
@@ -48,7 +48,7 @@ function buildPdfBuffer(options: {
   addBlock(`Bill Search Export — ${options.reference}`, 16, [30, 30, 30], 2, true);
   addBlock(`Generated ${options.generatedAt}`, 9, [110, 110, 110], 1);
   addBlock(
-    `Filters: ${options.year ? `Year ${options.year}` : 'All years'} • ${options.doctrines.length > 0 ? options.doctrines.join(', ') : 'All doctrines'}`,
+    `Filters: ${options.years.length > 0 ? `Years ${options.years.join(', ')}` : 'All years'} • ${options.doctrines.length > 0 ? options.doctrines.join(', ') : 'All doctrines'}`,
     9,
     [110, 110, 110],
     6
@@ -80,7 +80,7 @@ function buildPdfBuffer(options: {
 
 async function buildDocxBuffer(options: {
   reference: string;
-  year?: number;
+  years: number[];
   doctrines: string[];
   generatedAt: string;
   items: Awaited<ReturnType<typeof searchTranscriptStudyByReference>>['items'];
@@ -99,7 +99,7 @@ async function buildDocxBuffer(options: {
     new Paragraph({
       children: [
         new TextRun({
-          text: `Filters: ${options.year ? `Year ${options.year}` : 'All years'} • ${options.doctrines.length > 0 ? options.doctrines.join(', ') : 'All doctrines'}`,
+          text: `Filters: ${options.years.length > 0 ? `Years ${options.years.join(', ')}` : 'All years'} • ${options.doctrines.length > 0 ? options.doctrines.join(', ') : 'All doctrines'}`,
           color: '7A7A7A',
         }),
       ],
@@ -161,8 +161,10 @@ export async function GET(request: NextRequest) {
   const book = searchParams.get('book');
   const chapter = Number(searchParams.get('chapter'));
   const verse = Number(searchParams.get('verse'));
-  const yearValue = searchParams.get('year');
-  const year = yearValue ? Number(yearValue) : undefined;
+  const selectedYears = searchParams
+    .getAll('year')
+    .map((value) => parseInt(value, 10))
+    .filter((value) => !Number.isNaN(value));
   const doctrines = searchParams.getAll('doctrine').filter((item) => item.trim().length > 0);
   const format = normalizeFormat(searchParams.get('format'));
 
@@ -184,7 +186,7 @@ export async function GET(request: NextRequest) {
     chapter,
     verse,
     selectedDoctrines: doctrines,
-    year,
+    selectedYears,
     limit: 2000,
     offset: 0,
   });
@@ -192,7 +194,7 @@ export async function GET(request: NextRequest) {
   if (format === 'docx') {
     const bytes = await buildDocxBuffer({
       reference,
-      year,
+      years: selectedYears,
       doctrines,
       generatedAt,
       items: result.items,
@@ -209,7 +211,7 @@ export async function GET(request: NextRequest) {
 
   const pdfBytes = buildPdfBuffer({
     reference,
-    year,
+    years: selectedYears,
     doctrines,
     generatedAt,
     items: result.items,
