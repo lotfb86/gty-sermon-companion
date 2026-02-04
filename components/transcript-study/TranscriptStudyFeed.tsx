@@ -492,18 +492,30 @@ export default function TranscriptStudyFeed({
             const queueSermon = {
               sermon_code: item.sermon_code,
               title,
+              audio_url: item.audio_url,
               verse: item.primary_reference?.trim() || undefined,
             };
 
             return (
               <article key={item.id} className="card-elevated space-y-3">
-                <div className="pb-2 border-b border-white/10">
-                  <h3 className="font-serif text-base font-semibold text-[var(--text-primary)]">{title}</h3>
-                  <div className="text-xs text-[var(--text-secondary)] mt-1 flex flex-wrap gap-2">
-                    {item.date_preached && (
-                      <span>{new Date(item.date_preached).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                    )}
-                    <span className="text-[var(--accent)]">Primary Text: {primaryText}</span>
+                <div className="pb-2 border-b border-white/10 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-serif text-base font-semibold text-[var(--text-primary)]">{title}</h3>
+                    <div className="text-xs text-[var(--text-secondary)] mt-1 flex flex-wrap gap-2">
+                      {item.date_preached && (
+                        <span>{new Date(item.date_preached).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                      )}
+                      <span className="text-[var(--accent)]">Primary Text: {primaryText}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      href={`/sermons/${item.sermon_code}?t=${encodeURIComponent(selectedLabel)}`}
+                      className="btn btn-secondary text-xs px-3 py-2"
+                    >
+                      Open
+                    </Link>
+                    <AddToQueueButton sermon={queueSermon} variant="icon" />
                   </div>
                 </div>
 
@@ -537,13 +549,6 @@ export default function TranscriptStudyFeed({
                       )}
                     </div>
                   ))}
-                </div>
-
-                <div className="pt-1 flex items-center justify-between gap-3">
-                  <Link href={`/sermons/${item.sermon_code}?t=${encodeURIComponent(selectedLabel)}`} className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors">
-                    Open sermon →
-                  </Link>
-                  <AddToQueueButton sermon={queueSermon} variant="button" className="px-3 py-2 text-xs" />
                 </div>
               </article>
             );

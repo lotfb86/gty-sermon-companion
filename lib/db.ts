@@ -1735,6 +1735,7 @@ interface TranscriptStudyCandidateRow {
   sermon_code: string;
   title: string;
   date_preached?: string;
+  audio_url?: string;
   transcript_text?: string;
   llm_metadata?: string;
   primary_reference?: string;
@@ -1755,6 +1756,7 @@ export interface TranscriptStudySermonGroup {
   sermon_code: string;
   title: string;
   date_preached?: string;
+  audio_url?: string;
   primary_reference?: string;
   doctrines: string[];
   relevance_score?: number;
@@ -2030,6 +2032,7 @@ async function fetchTranscriptStudyCandidates(book: string, chapter: number): Pr
         s.sermon_code,
         s.title,
         s.date_preached,
+        s.audio_url,
         s.transcript_text,
         s.llm_metadata,
         (SELECT sr2.reference_text FROM scripture_references sr2
@@ -2151,6 +2154,7 @@ async function fetchTranscriptStudyTextCandidates(query: string): Promise<Transc
         s.sermon_code,
         s.title,
         s.date_preached,
+        s.audio_url,
         s.transcript_text,
         s.llm_metadata,
         (SELECT sr2.reference_text FROM scripture_references sr2
@@ -2311,6 +2315,7 @@ export async function searchTranscriptStudyByReference(
       sermon_code: candidate.sermon_code,
       title: candidate.title,
       date_preached: candidate.date_preached,
+      audio_url: candidate.audio_url,
       primary_reference: candidate.primary_reference,
       doctrines,
       occurrences,
@@ -2370,6 +2375,7 @@ export async function searchTranscriptStudyByText(
       sermon_code: candidate.sermon_code,
       title: candidate.title,
       date_preached: candidate.date_preached,
+      audio_url: candidate.audio_url,
       primary_reference: candidate.primary_reference,
       doctrines,
       relevance_score: relevanceScore,
