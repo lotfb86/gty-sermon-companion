@@ -80,6 +80,7 @@ export default function TranscriptStudyFeed({
   const [nextOffset, setNextOffset] = useState(initialResult.items.length);
   const [loading, setLoading] = useState(false);
   const [showAllDoctrines, setShowAllDoctrines] = useState(false);
+  const [showAllYears, setShowAllYears] = useState(false);
 
   useEffect(() => {
     setItems(initialResult.items);
@@ -93,6 +94,11 @@ export default function TranscriptStudyFeed({
     [initialResult.doctrine_facets]
   );
   const visibleDoctrines = showAllDoctrines ? sortedDoctrines : sortedDoctrines.slice(0, 5);
+  const sortedYears = useMemo(
+    () => [...initialResult.year_facets].sort((a, b) => Number(b.value) - Number(a.value)),
+    [initialResult.year_facets]
+  );
+  const visibleYears = showAllYears ? sortedYears : sortedYears.slice(0, 5);
 
   const fetchMore = useCallback(async () => {
     if (loading || !hasMore) return;
@@ -159,6 +165,44 @@ export default function TranscriptStudyFeed({
           )}
         </div>
       </div>
+
+      {sortedYears.length > 0 && (
+        <div className="card p-3 space-y-2">
+          <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-[0.15em]">
+            Year Filter
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={buildHref({ book, chapter, verse, doctrines: selectedDoctrines })}
+              className={`tag ${year === undefined ? 'tag-active' : ''}`}
+            >
+              All Years
+            </Link>
+            {visibleYears.map((facet: TranscriptStudyFacet) => {
+              const facetYear = Number(facet.value);
+              const active = year === facetYear;
+              return (
+                <Link
+                  key={facet.value}
+                  href={buildHref({ book, chapter, verse, year: facetYear, doctrines: selectedDoctrines })}
+                  className={`tag ${active ? 'tag-active' : ''}`}
+                >
+                  {facet.value} ({facet.count})
+                </Link>
+              );
+            })}
+          </div>
+          {sortedYears.length > 5 && (
+            <button
+              type="button"
+              onClick={() => setShowAllYears((prev) => !prev)}
+              className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+            >
+              {showAllYears ? 'Show Top 5' : `Show All (${sortedYears.length})`}
+            </button>
+          )}
+        </div>
+      )}
 
       {hasDoctrineFilter && (
         <div className="card p-3 space-y-2">

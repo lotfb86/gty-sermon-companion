@@ -204,33 +204,6 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
 
         {results && (
           <>
-            {results.year_facets.length > 0 && (
-              <form action="/transcript-study" method="GET" className="card p-3">
-                <input type="hidden" name="book" value={normalizedBook} />
-                <input type="hidden" name="chapter" value={selectedChapter} />
-                <input type="hidden" name="verse" value={selectedVerse} />
-                {selectedDoctrines.map((doctrine) => (
-                  <input key={doctrine} type="hidden" name="doctrine" value={doctrine} />
-                ))}
-                <div className="flex items-end gap-2">
-                  <label className="flex-1 text-xs text-[var(--text-secondary)]">
-                    <span className="mb-1 block">Year Filter</span>
-                    <select name="year" defaultValue={selectedYear ? String(selectedYear) : ''} className="input py-2 px-3 text-sm h-11">
-                      <option value="">All years</option>
-                      {results.year_facets.map((facet) => (
-                        <option key={facet.value} value={facet.value}>
-                          {facet.value} ({facet.count})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button type="submit" className="btn btn-secondary h-11 px-4">
-                    Apply
-                  </button>
-                </div>
-              </form>
-            )}
-
             <TranscriptStudyFeed
               initialResult={results}
               book={normalizedBook!}
