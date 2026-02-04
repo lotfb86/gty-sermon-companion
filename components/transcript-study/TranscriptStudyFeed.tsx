@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, Download } from 'lucide-react';
+import AddToQueueButton from '@/components/AddToQueueButton';
 import type {
   TranscriptStudyFacet,
   TranscriptStudyMode,
@@ -488,6 +489,11 @@ export default function TranscriptStudyFeed({
           {items.map((item) => {
             const title = item.title?.trim() || `Untitled sermon (${item.sermon_code})`;
             const primaryText = item.primary_reference?.trim() || 'Primary text unavailable';
+            const queueSermon = {
+              sermon_code: item.sermon_code,
+              title,
+              verse: item.primary_reference?.trim() || undefined,
+            };
 
             return (
               <article key={item.id} className="card-elevated space-y-3">
@@ -533,10 +539,11 @@ export default function TranscriptStudyFeed({
                   ))}
                 </div>
 
-                <div className="pt-1">
+                <div className="pt-1 flex items-center justify-between gap-3">
                   <Link href={`/sermons/${item.sermon_code}?t=${encodeURIComponent(selectedLabel)}`} className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors">
                     Open sermon →
                   </Link>
+                  <AddToQueueButton sermon={queueSermon} variant="button" className="px-3 py-2 text-xs" />
                 </div>
               </article>
             );
