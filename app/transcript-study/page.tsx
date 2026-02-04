@@ -1,6 +1,5 @@
 import { BookOpen, Download, Search } from 'lucide-react';
 import {
-  getAllBooks,
   parseScriptureQuery,
   searchTranscriptStudyByReference,
 } from '@/lib/db';
@@ -97,15 +96,18 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
     ? parseScriptureQuery(`${rawBookInput} 1`)?.book
     : undefined;
 
-  const booksRaw = await getAllBooks();
-  const availableBooks = sortBooksByCanonicalOrder(booksRaw.map((item) => item.book));
+  const availableBooks = sortBooksByCanonicalOrder(BOOK_ORDER);
 
   const chapterIsValid = selectedChapter !== undefined && selectedChapter > 0;
   const verseIsValid = selectedVerse !== undefined && selectedVerse > 0;
   const canRunSearch = Boolean(normalizedBook && chapterIsValid && verseIsValid);
 
-  const results = canRunSearch
-    ? await searchTranscriptStudyByReference({
+  let results: Awaited<ReturnType<typeof searchTranscriptStudyByReference>> | null = null;
+  let loadError: string | null = null;
+
+  if (canRunSearch) {
+    try {
+      results = await searchTranscriptStudyByReference({
         book: normalizedBook!,
         chapter: selectedChapter!,
         verse: selectedVerse!,
@@ -113,8 +115,11 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         year: selectedYear,
         limit: PAGE_SIZE,
         offset: 0,
-      })
-    : null;
+      });
+    } catch {
+      loadError = 'Bill Search hit a temporary connection issue. Please retry the same filter.';
+    }
+  }
 
   const exportQuery = canRunSearch
     ? buildExportQuery({
@@ -199,6 +204,12 @@ export default async function TranscriptStudyPage({ searchParams }: PageProps) {
         {!canRunSearch && !rawBookInput && (
           <div className="card text-sm text-[var(--text-secondary)]">
             Enter book, chapter, and verse to run Bill Search.
+          </div>
+        )}
+
+        {loadError && (
+          <div className="card text-sm text-[var(--text-secondary)]">
+            {loadError}
           </div>
         )}
 
