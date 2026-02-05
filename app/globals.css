@@ -82,6 +82,16 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* iOS/Safari touch optimizations */
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+  }
+
+  input[type="range"] {
+    touch-action: none;
+  }
+
   /* Scrollbar Styles */
   ::-webkit-scrollbar {
     width: 6px;
@@ -170,10 +180,11 @@
 
   /* Glassmorphism Effect */
   .glass {
-    background: rgb(10, 10, 10);
+    background: rgba(10, 10, 10, 0.85);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.05);
+    -webkit-transform: translateZ(0); /* Force proper compositing layer on Safari */
   }
 
   /* Button Styles */

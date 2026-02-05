@@ -67,6 +67,32 @@ const AudioContext = createContext<AudioContextType | undefined>(undefined);
 
 const QUEUE_STORAGE_KEY = 'gty-listening-queue';
 
+function getRestoredQueueIndex(queueItems: QueueItem[], savedIndex: unknown): number {
+  const numericIndex = typeof savedIndex === 'number' ? savedIndex : parseInt(String(savedIndex || '-1'), 10);
+  if (Number.isInteger(numericIndex) && numericIndex >= 0 && numericIndex < queueItems.length) {
+    return numericIndex;
+  }
+
+  let bestIndex = -1;
+  let bestTimestamp = 0;
+
+  for (let index = 0; index < queueItems.length; index += 1) {
+    const code = queueItems[index].sermonCode;
+    const posRaw = localStorage.getItem(`sermon-${code}-position`);
+    const tsRaw = localStorage.getItem(`sermon-${code}-lastPlayed`);
+
+    const position = posRaw ? parseFloat(posRaw) : 0;
+    const timestamp = tsRaw ? parseInt(tsRaw, 10) : 0;
+
+    if (position > 0 && timestamp > bestTimestamp) {
+      bestTimestamp = timestamp;
+      bestIndex = index;
+    }
+  }
+
+  return bestIndex;
+}
+
 export function AudioProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const { user } = useAuth();
@@ -183,8 +209,19 @@ export function AudioProvider({ children }: { children: ReactNode }) {
               if (localData) {
                 const parsed = JSON.parse(localData);
                 if (parsed.items?.length > 0) {
+                  const restoredIndex = getRestoredQueueIndex(parsed.items, parsed.currentIndex);
                   setQueue(parsed.items);
-                  setCurrentQueueIndex(parsed.currentIndex ?? -1);
+                  setCurrentQueueIndex(restoredIndex);
+                  if (restoredIndex >= 0 && restoredIndex < parsed.items.length) {
+                    const item = parsed.items[restoredIndex] as QueueItem;
+                    setCurrentSermon({
+                      code: item.sermonCode,
+                      title: item.title,
+                      audioUrl: item.audioUrl,
+                      book: item.book,
+                      verse: item.verse,
+                    });
+                  }
                   setQueueLoaded(true);
                   return;
                 }
@@ -200,8 +237,19 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         if (localData) {
           const parsed = JSON.parse(localData);
           if (parsed.items?.length > 0) {
+            const restoredIndex = getRestoredQueueIndex(parsed.items, parsed.currentIndex);
             setQueue(parsed.items);
-            setCurrentQueueIndex(parsed.currentIndex ?? -1);
+            setCurrentQueueIndex(restoredIndex);
+            if (restoredIndex >= 0 && restoredIndex < parsed.items.length) {
+              const item = parsed.items[restoredIndex] as QueueItem;
+              setCurrentSermon({
+                code: item.sermonCode,
+                title: item.title,
+                audioUrl: item.audioUrl,
+                book: item.book,
+                verse: item.verse,
+              });
+            }
           }
         }
       } catch {}
@@ -248,7 +296,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
     // If same sermon, just resume playback
     if (currentSermon && currentSermon.code === sermon.code) {
-      audioRef.current?.play();
+      audioRef.current?.play().catch(() => setIsPlaying(false));
       setIsPlaying(true);
     } else {
       // Different sermon — set pending play flag, then change sermon.
@@ -282,7 +330,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (isPlaying) {
       pause();
     } else {
-      audioRef.current?.play();
+      audioRef.current?.play().catch(() => setIsPlaying(false));
       setIsPlaying(true);
     }
   };
@@ -427,7 +475,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       // Start playback if requested
       if (pendingPlayRef.current) {
         pendingPlayRef.current = false;
-        audioRef.current.play();
+        audioRef.current.play().catch(() => setIsPlaying(false));
         setIsPlaying(true);
       }
     }
@@ -493,6 +541,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={handleEnded}
           preload="metadata"
+          playsInline
         />
       )}
     </AudioContext.Provider>

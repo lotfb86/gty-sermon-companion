@@ -40,9 +40,11 @@ export default function RootLayout({
             {/* Mobile-first container with max width */}
             <main className="max-w-md w-full mx-auto min-h-screen relative bg-[var(--bg-primary)] shadow-2xl">
               {children}
-              <MiniPlayer />
-              <BottomNav />
             </main>
+            {/* Fixed-position elements must be outside the relative main
+                to avoid Safari stacking context issues with position:fixed */}
+            <MiniPlayer />
+            <BottomNav />
           </AudioProvider>
         </AuthProvider>
       </body>

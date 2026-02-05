@@ -17,8 +17,8 @@ export default function BottomNav() {
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50">
-      <div className="max-w-md mx-auto">
+    <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
+      <div className="max-w-md mx-auto pointer-events-auto">
         {/* Glassmorphism Background */}
         <div className="border-t border-white/5 pb-[env(safe-area-inset-bottom,8px)] pt-1.5 px-4" style={{ background: 'rgba(10, 10, 10, 1)', backdropFilter: 'blur(16px)' }}>
           <div className="flex justify-between items-center">
