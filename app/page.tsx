@@ -1,20 +1,15 @@
 import Link from 'next/link';
-import { getAllSermons, getBooksWithSeriesCounts, getAllTopics, getCachedMetadataValues } from '@/lib/db';
+import { getBooksWithSeriesCounts, getAllTopics, getCachedMetadataValues } from '@/lib/db';
 import BookCover from '@/components/BookCover';
-import Waveform from '@/components/Waveform';
-import PlayButton from '@/components/PlayButton';
+import ContinueListening from '@/components/ContinueListening';
 import MetadataTagList from '@/components/MetadataTagList';
 
 export default async function HomePage() {
-  const recentSermons = await getAllSermons(1, 0);
   const topBooks = (await getBooksWithSeriesCounts()).slice(0, 8);
   const topTopics = (await getAllTopics()).slice(0, 12);
   const topDoctrines = await getCachedMetadataValues('doctrines', { limit: 8 });
   const topHeresies = await getCachedMetadataValues('heresies', { limit: 6 });
   const topThemes = await getCachedMetadataValues('themes', { limit: 12 });
-
-  // Mock "currently listening" - the most recent sermon
-  const currentlyListening = recentSermons[0];
 
   return (
     <div className="pb-32 space-y-6 animate-fade-in">
@@ -26,58 +21,9 @@ export default async function HomePage() {
         </p>
       </header>
 
-      {/* Hero: Continue Listening */}
-      {currentlyListening && (
-        <section className="px-4">
-          <h2 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.2em] mb-3">
-            Continue Listening
-          </h2>
-
-          <Link href={`/sermons/${currentlyListening.sermon_code}`}>
-            <div className="card-elevated group hover:border-[var(--accent)]/30 transition-all">
-              <div className="flex gap-3 items-center relative z-10">
-                {/* Mini Book Cover */}
-                <BookCover
-                  title={currentlyListening.title.split(' ').slice(0, 2).join(' ')}
-                  subtitle="Sermon"
-                  size="sm"
-                  className="shadow-lg"
-                />
-
-                {/* Info */}
-                <div className="flex-1 space-y-2 min-w-0">
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-serif text-sm font-semibold text-white leading-tight mb-1 line-clamp-2">
-                        {currentlyListening.title}
-                      </h3>
-                      {currentlyListening.date_preached && (
-                        <p className="text-[var(--accent)] text-[11px] font-medium">
-                          {new Date(currentlyListening.date_preached).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })}
-                        </p>
-                      )}
-                    </div>
-                    <PlayButton sermon={currentlyListening} size="sm" />
-                  </div>
-
-                  {/* Waveform Progress */}
-                  <div className="space-y-1.5">
-                    <Waveform progress={0} bars={20} className="h-6 opacity-50" />
-                    <div className="flex justify-between text-[10px] text-[var(--text-secondary)] font-mono">
-                      <span>0% Complete</span>
-                      <span>Not Started</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Link>
-        </section>
-      )}
+      <section className="px-4">
+        <ContinueListening />
+      </section>
 
       {/* Study by Book */}
       <section className="space-y-3">
