@@ -793,8 +793,12 @@ export async function getSermonsByScripture(book: string, chapter?: number, vers
     conditions += ' AND s.transcript_text IS NOT NULL';
   }
 
-  conditions += ' AND (SELECT sr3.book FROM scripture_references sr3 WHERE sr3.sermon_id = s.id ORDER BY sr3.id LIMIT 1) = ?';
+  conditions += ' AND pb.primary_book = ?';
   conditionParams.push(book);
+  if (chapter !== undefined) {
+    conditions += ' AND (pc.primary_chapter = ? OR pc.primary_chapter IS NULL)';
+    conditionParams.push(chapter);
+  }
 
   let orderBy = 's.date_preached DESC';
   if (filters.sort === 'date-asc') orderBy = 's.date_preached ASC';
@@ -803,12 +807,53 @@ export async function getSermonsByScripture(book: string, chapter?: number, vers
   const allParams = [...conditionParams, limit];
 
   const sql = `
+    WITH primary_book AS (
+      SELECT sermon_id, book as primary_book
+      FROM (
+        SELECT
+          sermon_id,
+          book,
+          COUNT(*) as ref_count,
+          MIN(id) as first_ref_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY sermon_id
+            ORDER BY COUNT(*) DESC, MIN(id) ASC
+          ) as rn
+        FROM scripture_references
+        WHERE book IS NOT NULL AND TRIM(book) != ''
+        GROUP BY sermon_id, book
+      )
+      WHERE rn = 1
+    ),
+    primary_chapter AS (
+      SELECT sermon_id, chapter as primary_chapter
+      FROM (
+        SELECT
+          sr.sermon_id,
+          sr.chapter,
+          COUNT(*) as chapter_ref_count,
+          MIN(sr.id) as first_ch_ref_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY sr.sermon_id
+            ORDER BY COUNT(*) DESC, MIN(sr.id) ASC
+          ) as rn
+        FROM scripture_references sr
+        JOIN primary_book pb
+          ON pb.sermon_id = sr.sermon_id
+         AND pb.primary_book = sr.book
+        WHERE sr.chapter IS NOT NULL
+        GROUP BY sr.sermon_id, sr.chapter
+      )
+      WHERE rn = 1
+    )
     SELECT s.*,
       (SELECT sr2.reference_text FROM scripture_references sr2
        WHERE sr2.sermon_id = s.id ORDER BY sr2.id LIMIT 1) as verse,
       MIN(sr.verse_start) as sort_verse
     FROM sermons s
     JOIN scripture_references sr ON s.id = sr.sermon_id
+    JOIN primary_book pb ON pb.sermon_id = s.id
+    LEFT JOIN primary_chapter pc ON pc.sermon_id = s.id
     WHERE ${conditions}
     GROUP BY s.id
     ORDER BY ${orderBy}
@@ -843,12 +888,30 @@ export async function getReferencingSermons(book: string, chapter: number, limit
 export async function getAllBooks() {
   const result = await client.execute({
     sql: `
-      WITH primary_refs AS (
+      WITH primary_book AS (
+        SELECT sermon_id, book as primary_book
+        FROM (
+          SELECT
+            sermon_id,
+            book,
+            COUNT(*) as ref_count,
+            MIN(id) as first_ref_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY sermon_id
+              ORDER BY COUNT(*) DESC, MIN(id) ASC
+            ) as rn
+          FROM scripture_references
+          WHERE book IS NOT NULL AND TRIM(book) != ''
+          GROUP BY sermon_id, book
+        )
+        WHERE rn = 1
+      ),
+      primary_refs AS (
         SELECT
           s.id as sermon_id,
-          (SELECT sr2.book FROM scripture_references sr2
-           WHERE sr2.sermon_id = s.id ORDER BY sr2.id LIMIT 1) as primary_book
+          pb.primary_book
         FROM sermons s
+        LEFT JOIN primary_book pb ON pb.sermon_id = s.id
       )
       SELECT
         pr.primary_book as book,
@@ -867,14 +930,56 @@ export async function getAllBooks() {
 export async function getChaptersForBook(book: string) {
   const result = await client.execute({
     sql: `
+      WITH primary_book AS (
+        SELECT sermon_id, book as primary_book
+        FROM (
+          SELECT
+            sermon_id,
+            book,
+            COUNT(*) as ref_count,
+            MIN(id) as first_ref_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY sermon_id
+              ORDER BY COUNT(*) DESC, MIN(id) ASC
+            ) as rn
+          FROM scripture_references
+          WHERE book IS NOT NULL AND TRIM(book) != ''
+          GROUP BY sermon_id, book
+        )
+        WHERE rn = 1
+      ),
+      primary_chapter AS (
+        SELECT sermon_id, chapter as primary_chapter
+        FROM (
+          SELECT
+            sr.sermon_id,
+            sr.chapter,
+            COUNT(*) as chapter_ref_count,
+            MIN(sr.id) as first_ch_ref_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY sr.sermon_id
+              ORDER BY COUNT(*) DESC, MIN(sr.id) ASC
+            ) as rn
+          FROM scripture_references sr
+          JOIN primary_book pb
+            ON pb.sermon_id = sr.sermon_id
+           AND pb.primary_book = sr.book
+          WHERE sr.chapter IS NOT NULL
+          GROUP BY sr.sermon_id, sr.chapter
+        )
+        WHERE rn = 1
+      )
       SELECT
         sr.chapter,
         COUNT(DISTINCT CASE
-          WHEN (SELECT sr2.book FROM scripture_references sr2 WHERE sr2.sermon_id = s.id ORDER BY sr2.id LIMIT 1) = ?
+          WHEN pb.primary_book = ?
+           AND (pc.primary_chapter = sr.chapter OR pc.primary_chapter IS NULL)
           THEN s.id END) as sermon_count,
         COUNT(DISTINCT s.id) as total_count
       FROM scripture_references sr
       JOIN sermons s ON sr.sermon_id = s.id
+      JOIN primary_book pb ON pb.sermon_id = s.id
+      LEFT JOIN primary_chapter pc ON pc.sermon_id = s.id
       WHERE sr.book = ? AND sr.chapter IS NOT NULL
       GROUP BY sr.chapter
       ORDER BY CAST(sr.chapter AS INTEGER)
@@ -994,17 +1099,37 @@ export async function getSeriesByBook(book: string, filters: StudyByBookFilterOp
 
   const result = await client.execute({
     sql: `
-      WITH series_book_refs AS (
+      WITH primary_book AS (
+        SELECT sermon_id, book as primary_book
+        FROM (
+          SELECT
+            sermon_id,
+            book,
+            COUNT(*) as ref_count,
+            MIN(id) as first_ref_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY sermon_id
+              ORDER BY COUNT(*) DESC, MIN(id) ASC
+            ) as rn
+          FROM scripture_references
+          WHERE book IS NOT NULL AND TRIM(book) != ''
+          GROUP BY sermon_id, book
+        )
+        WHERE rn = 1
+      ),
+      series_book_refs AS (
         SELECT
-          se.id as series_id,
-          sr.book,
-          COUNT(*) as ref_count,
-          SUM(COUNT(*)) OVER (PARTITION BY se.id) as total_refs,
-          ROW_NUMBER() OVER (PARTITION BY se.id ORDER BY COUNT(*) DESC) as rn
-        FROM series se
-        JOIN sermons s ON se.id = s.series_id
-        JOIN scripture_references sr ON s.id = sr.sermon_id
-        GROUP BY se.id, sr.book
+          s.series_id,
+          pb.primary_book as book,
+          COUNT(*) as sermon_count_for_book,
+          ROW_NUMBER() OVER (
+            PARTITION BY s.series_id
+            ORDER BY COUNT(*) DESC, pb.primary_book ASC
+          ) as rn
+        FROM sermons s
+        JOIN primary_book pb ON pb.sermon_id = s.id
+        WHERE s.series_id IS NOT NULL
+        GROUP BY s.series_id, pb.primary_book
       )
       SELECT
         se.*,
@@ -1032,35 +1157,53 @@ export async function getSeriesByBook(book: string, filters: StudyByBookFilterOp
 export async function getBooksWithSeriesCounts() {
   const result = await client.execute({
     sql: `
-      WITH primary_refs AS (
+      WITH primary_book AS (
+        SELECT sermon_id, book as primary_book
+        FROM (
+          SELECT
+            sermon_id,
+            book,
+            COUNT(*) as ref_count,
+            MIN(id) as first_ref_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY sermon_id
+              ORDER BY COUNT(*) DESC, MIN(id) ASC
+            ) as rn
+          FROM scripture_references
+          WHERE book IS NOT NULL AND TRIM(book) != ''
+          GROUP BY sermon_id, book
+        )
+        WHERE rn = 1
+      ),
+      primary_refs AS (
         SELECT
           s.id as sermon_id,
           s.series_id,
-          (SELECT sr2.book FROM scripture_references sr2
-           WHERE sr2.sermon_id = s.id ORDER BY sr2.id LIMIT 1) as primary_book
+          pb.primary_book
         FROM sermons s
+        LEFT JOIN primary_book pb ON pb.sermon_id = s.id
       ),
       series_book_refs AS (
         SELECT
-          se.id as series_id,
-          sr.book,
-          COUNT(*) as ref_count,
-          SUM(COUNT(*)) OVER (PARTITION BY se.id) as total_refs,
-          ROW_NUMBER() OVER (PARTITION BY se.id ORDER BY COUNT(*) DESC) as rn
-        FROM series se
-        JOIN sermons s ON se.id = s.series_id
-        JOIN scripture_references sr ON s.id = sr.sermon_id
-        GROUP BY se.id, sr.book
+          pr.series_id,
+          pr.primary_book as book,
+          COUNT(*) as sermon_count_for_book,
+          ROW_NUMBER() OVER (
+            PARTITION BY pr.series_id
+            ORDER BY COUNT(*) DESC, pr.primary_book ASC
+          ) as rn
+        FROM primary_refs pr
+        WHERE pr.series_id IS NOT NULL
+          AND pr.primary_book IS NOT NULL
+        GROUP BY pr.series_id, pr.primary_book
       )
       SELECT
         pr.primary_book as book,
         COUNT(DISTINCT pr.sermon_id) as sermon_count,
-        COUNT(DISTINCT sbr.series_id) as series_count
+        COUNT(DISTINCT CASE WHEN sbr.rn = 1 AND sbr.book = pr.primary_book THEN pr.series_id END) as series_count
       FROM primary_refs pr
       LEFT JOIN series_book_refs sbr
         ON pr.series_id = sbr.series_id
-        AND sbr.book = pr.primary_book
-        AND (sbr.rn = 1 OR (1.0 * sbr.ref_count / sbr.total_refs) >= 0.25)
       WHERE pr.primary_book IS NOT NULL
       GROUP BY pr.primary_book
       ORDER BY sermon_count DESC
