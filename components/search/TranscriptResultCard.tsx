@@ -22,10 +22,10 @@ interface TranscriptResultCardProps {
 export default function TranscriptResultCard({ result, query }: TranscriptResultCardProps) {
   return (
     <div className="card group relative">
-      <Link href={`/sermons/${result.sermon_code}?t=${encodeURIComponent(query)}`} className="block">
-        <div className="flex items-center gap-3 mb-2">
-          <PlayButton sermon={result} size="sm" />
-          <div className="flex-1 min-w-0">
+      <div className="flex items-start gap-3">
+        <PlayButton sermon={result} size="sm" />
+        <Link href={`/sermons/${result.sermon_code}?t=${encodeURIComponent(query)}`} className="flex-1 min-w-0">
+          <div className="mb-2">
             <h3 className="font-serif font-semibold text-sm text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
               {result.title}
             </h3>
@@ -55,21 +55,21 @@ export default function TranscriptResultCard({ result, query }: TranscriptResult
               </div>
             )}
           </div>
-        </div>
 
-        {/* Transcript Snippets */}
-        {result.snippets.length > 0 && (
-          <div className="space-y-1.5 ml-13">
-            {result.snippets.map((snippet, idx) => (
-              <p
-                key={idx}
-                className="text-xs text-[var(--text-tertiary)] leading-relaxed line-clamp-2 [&_mark]:bg-[var(--accent)]/20 [&_mark]:text-[var(--accent)] [&_mark]:px-0.5 [&_mark]:rounded"
-                dangerouslySetInnerHTML={{ __html: snippet.text }}
-              />
-            ))}
-          </div>
-        )}
-      </Link>
+          {/* Transcript Snippets */}
+          {result.snippets.length > 0 && (
+            <div className="space-y-1.5">
+              {result.snippets.map((snippet, idx) => (
+                <p
+                  key={idx}
+                  className="text-xs text-[var(--text-tertiary)] leading-relaxed line-clamp-2 [&_mark]:bg-[var(--accent)]/20 [&_mark]:text-[var(--accent)] [&_mark]:px-0.5 [&_mark]:rounded"
+                  dangerouslySetInnerHTML={{ __html: snippet.text }}
+                />
+              ))}
+            </div>
+          )}
+        </Link>
+      </div>
       <div className="absolute top-2 right-2">
         <AddToQueueButton sermon={result} variant="icon" />
       </div>

@@ -17,9 +17,8 @@ export default function RelatedSermons({ sermons }: RelatedSermonsProps) {
 
       <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
         {sermons.map((sermon) => (
-          <Link
+          <div
             key={sermon.id}
-            href={`/sermons/${sermon.sermon_code}`}
             className="flex-shrink-0 w-48 p-3 rounded-xl bg-[var(--surface)] border border-white/5 hover:border-[var(--accent)]/30 transition-all group"
           >
             <div className="flex items-start justify-between mb-2">
@@ -30,15 +29,17 @@ export default function RelatedSermons({ sermons }: RelatedSermonsProps) {
                 </span>
               )}
             </div>
-            <h4 className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors line-clamp-2 leading-tight mb-1">
-              {sermon.title}
-            </h4>
-            {sermon.verse && (
-              <span className="text-[10px] text-[var(--accent)]">
-                {sermon.verse}
-              </span>
-            )}
-          </Link>
+            <Link href={`/sermons/${sermon.sermon_code}`} className="block">
+              <h4 className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors line-clamp-2 leading-tight mb-1">
+                {sermon.title}
+              </h4>
+              {sermon.verse && (
+                <span className="text-[10px] text-[var(--accent)]">
+                  {sermon.verse}
+                </span>
+              )}
+            </Link>
+          </div>
         ))}
       </div>
     </div>

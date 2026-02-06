@@ -198,11 +198,11 @@ export default function ContinueListening({ allSermons = [] }: { allSermons?: Se
       <h2 className="font-serif text-base font-semibold text-[var(--text-primary)]">
         Continue Listening
       </h2>
-      <Link key={entry.sermon.sermon_code} href={`/sermons/${entry.sermon.sermon_code}`} className="block">
-        <div className="card-elevated group hover:border-[var(--accent)]/30 transition-all">
-          <div className="flex items-center gap-3 mb-2.5">
-            <PlayButton sermon={entry.sermon} size="sm" />
-            <div className="flex-1 min-w-0">
+      <div className="card-elevated group hover:border-[var(--accent)]/30 transition-all">
+        <div className="flex items-start gap-3">
+          <PlayButton sermon={entry.sermon} size="sm" />
+          <Link href={`/sermons/${entry.sermon.sermon_code}`} className="flex-1 min-w-0">
+            <div className="mb-2.5">
               <h3 className="font-serif text-sm font-medium text-[var(--text-primary)] line-clamp-2 mb-0.5 group-hover:text-[var(--accent)] transition-colors">
                 {entry.sermon.title}
               </h3>
@@ -216,18 +216,18 @@ export default function ContinueListening({ allSermons = [] }: { allSermons?: Se
                 </div>
               )}
             </div>
-          </div>
-          <Waveform progress={entry.progress} bars={40} className="mb-1.5 h-8" />
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[var(--text-secondary)] font-mono text-[11px]">
-              {formatTime(entry.position)} / {entry.duration > 0 ? formatTime(entry.duration) : '--:--'}
-            </span>
-            <span className="text-[var(--accent)] font-semibold text-[11px]">
-              {Math.round(entry.progress)}% complete
-            </span>
-          </div>
+            <Waveform progress={entry.progress} bars={40} className="mb-1.5 h-8" />
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[var(--text-secondary)] font-mono text-[11px]">
+                {formatTime(entry.position)} / {entry.duration > 0 ? formatTime(entry.duration) : '--:--'}
+              </span>
+              <span className="text-[var(--accent)] font-semibold text-[11px]">
+                {Math.round(entry.progress)}% complete
+              </span>
+            </div>
+          </Link>
         </div>
-      </Link>
+      </div>
     </div>
   );
 }

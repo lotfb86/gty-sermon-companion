@@ -83,37 +83,35 @@ export default function SermonListInfinite({
       {children}
       {extraItems.map((sermon) => (
         <div key={sermon.id} className="card group relative">
-          <Link href={`/sermons/${sermon.sermon_code}`} className="block">
-            <div className="flex items-center gap-4">
-              <PlayButton sermon={sermon} size="sm" />
-              <div className="flex-1 min-w-0">
-                <h3 className="font-serif font-medium text-[var(--text-primary)] line-clamp-2 mb-1 group-hover:text-[var(--accent)] transition-colors">
-                  {sermon.title}
-                </h3>
-                {sermon.verse && (
-                  <p className="text-[11px] text-[var(--accent)] font-medium mb-1">
-                    {sermon.verse}
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)] mb-2">
-                  {sermon.date_preached && (
-                    <span>
-                      {new Date(sermon.date_preached).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </span>
-                  )}
-                </div>
-                {sermon.summary && (
-                  <p className="text-sm text-[var(--text-secondary)] line-clamp-2">
-                    {sermon.summary}
-                  </p>
+          <div className="flex items-center gap-4">
+            <PlayButton sermon={sermon} size="sm" />
+            <Link href={`/sermons/${sermon.sermon_code}`} className="flex-1 min-w-0">
+              <h3 className="font-serif font-medium text-[var(--text-primary)] line-clamp-2 mb-1 group-hover:text-[var(--accent)] transition-colors">
+                {sermon.title}
+              </h3>
+              {sermon.verse && (
+                <p className="text-[11px] text-[var(--accent)] font-medium mb-1">
+                  {sermon.verse}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)] mb-2">
+                {sermon.date_preached && (
+                  <span>
+                    {new Date(sermon.date_preached).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </span>
                 )}
               </div>
-            </div>
-          </Link>
+              {sermon.summary && (
+                <p className="text-sm text-[var(--text-secondary)] line-clamp-2">
+                  {sermon.summary}
+                </p>
+              )}
+            </Link>
+          </div>
           <div className="absolute top-2 right-2">
             <AddToQueueButton sermon={sermon} variant="icon" />
           </div>

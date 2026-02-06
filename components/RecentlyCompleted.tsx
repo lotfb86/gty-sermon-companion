@@ -94,19 +94,19 @@ export default function RecentlyCompleted({ allSermons }: { allSermons: SermonDa
       </h2>
       <div className="space-y-2">
         {entries.map((entry) => (
-          <Link key={entry.sermon.id} href={`/sermons/${entry.sermon.sermon_code}`} className="card group">
+          <div key={entry.sermon.id} className="card group">
             <div className="flex items-center gap-3">
               <PlayButton sermon={entry.sermon} size="sm" />
-              <div className="flex-1 min-w-0">
+              <Link href={`/sermons/${entry.sermon.sermon_code}`} className="flex-1 min-w-0">
                 <h3 className="font-serif text-sm font-medium text-[var(--text-primary)] line-clamp-2 mb-0.5 group-hover:text-[var(--accent)] transition-colors">
                   {entry.sermon.title}
                 </h3>
                 <div className="text-[11px] text-[var(--text-secondary)]">
                   Completed
                 </div>
-              </div>
+              </Link>
             </div>
-          </Link>
+          </div>
         ))}
       </div>
     </div>

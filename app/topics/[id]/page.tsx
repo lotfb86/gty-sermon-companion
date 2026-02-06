@@ -123,15 +123,14 @@ export default async function TopicDetailPage({ params, searchParams }: PageProp
                 : metadata?.summary?.brief;
 
               return (
-                <Link
-                  key={sermon.id}
-                  href={`/sermons/${sermon.sermon_code}`}
-                  className="card group"
-                >
+                <div key={sermon.id} className="card group">
                   <div className="flex items-center gap-4">
                     <PlayButton sermon={sermon} size="sm" />
 
-                    <div className="flex-1 min-w-0">
+                    <Link
+                      href={`/sermons/${sermon.sermon_code}`}
+                      className="flex-1 min-w-0"
+                    >
                       <h3 className="font-serif font-medium text-[var(--text-primary)] line-clamp-2 mb-1 group-hover:text-[var(--accent)] transition-colors">
                         {sermon.title}
                       </h3>
@@ -161,9 +160,9 @@ export default async function TopicDetailPage({ params, searchParams }: PageProp
                           {summary}
                         </p>
                       )}
-                    </div>
+                    </Link>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>

@@ -128,15 +128,14 @@ export default function ListeningHistory({ allSermons }: { allSermons: SermonDat
 
           <div className="space-y-2.5">
             {inProgress.map((entry) => (
-              <Link
-                key={entry.sermon.id}
-                href={`/sermons/${entry.sermon.sermon_code}`}
-                className="block"
-              >
-                <div className="card-elevated group hover:border-[var(--accent)]/30 transition-all">
-                  <div className="flex items-center gap-3 mb-2.5">
-                    <PlayButton sermon={entry.sermon} size="sm" />
-                    <div className="flex-1 min-w-0">
+              <div key={entry.sermon.id} className="card-elevated group hover:border-[var(--accent)]/30 transition-all">
+                <div className="flex items-start gap-3">
+                  <PlayButton sermon={entry.sermon} size="sm" />
+                  <Link
+                    href={`/sermons/${entry.sermon.sermon_code}`}
+                    className="flex-1 min-w-0"
+                  >
+                    <div className="mb-2.5">
                       <h3 className="font-serif text-sm font-medium text-[var(--text-primary)] line-clamp-2 mb-0.5 group-hover:text-[var(--accent)] transition-colors">
                         {entry.sermon.title}
                       </h3>
@@ -150,20 +149,20 @@ export default function ListeningHistory({ allSermons }: { allSermons: SermonDat
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  <Waveform progress={entry.progress} bars={40} className="mb-1.5 h-8" />
+                    <Waveform progress={entry.progress} bars={40} className="mb-1.5 h-8" />
 
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--text-secondary)] font-mono text-[11px]">
-                      {formatTime(entry.position)} / {entry.duration > 0 ? formatDuration(entry.duration) : '--:--'}
-                    </span>
-                    <span className="text-[var(--accent)] font-semibold text-[11px]">
-                      {Math.round(entry.progress)}% complete
-                    </span>
-                  </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[var(--text-secondary)] font-mono text-[11px]">
+                        {formatTime(entry.position)} / {entry.duration > 0 ? formatDuration(entry.duration) : '--:--'}
+                      </span>
+                      <span className="text-[var(--accent)] font-semibold text-[11px]">
+                        {Math.round(entry.progress)}% complete
+                      </span>
+                    </div>
+                  </Link>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </div>
@@ -178,23 +177,19 @@ export default function ListeningHistory({ allSermons }: { allSermons: SermonDat
 
           <div className="space-y-2">
             {completed.map((entry) => (
-              <Link
-                key={entry.sermon.id}
-                href={`/sermons/${entry.sermon.sermon_code}`}
-                className="card group"
-              >
+              <div key={entry.sermon.id} className="card group">
                 <div className="flex items-center gap-3">
                   <PlayButton sermon={entry.sermon} size="sm" />
-                  <div className="flex-1 min-w-0">
+                  <Link href={`/sermons/${entry.sermon.sermon_code}`} className="flex-1 min-w-0">
                     <h3 className="font-serif text-sm font-medium text-[var(--text-primary)] line-clamp-2 mb-0.5 group-hover:text-[var(--accent)] transition-colors">
                       {entry.sermon.title}
                     </h3>
                     <div className="text-[11px] text-[var(--text-secondary)]">
                       Completed
                     </div>
-                  </div>
+                  </Link>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </div>

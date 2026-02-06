@@ -200,11 +200,7 @@ export default async function SeriesDetailPage({ params, searchParams }: PagePro
                   const sermonNumber = sermonIndexMap.get(sermon.id) || 0;
 
                   return (
-                    <Link
-                      key={sermon.id}
-                      href={`/sermons/${sermon.sermon_code}`}
-                      className="card group"
-                    >
+                    <div key={sermon.id} className="card group">
                       <div className="flex gap-3">
                         {/* Sermon Number */}
                         <div className="flex-shrink-0 w-12 h-12 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg flex items-center justify-center font-bold text-lg text-[var(--text-primary)]">
@@ -212,7 +208,10 @@ export default async function SeriesDetailPage({ params, searchParams }: PagePro
                         </div>
 
                         {/* Sermon Info */}
-                        <div className="flex-1 min-w-0">
+                        <Link
+                          href={`/sermons/${sermon.sermon_code}`}
+                          className="flex-1 min-w-0"
+                        >
                           <h4 className="font-serif font-semibold text-base text-[var(--text-primary)] mb-1 line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
                             {sermon.title}
                           </h4>
@@ -243,7 +242,7 @@ export default async function SeriesDetailPage({ params, searchParams }: PagePro
                               {summary}
                             </p>
                           )}
-                        </div>
+                        </Link>
 
                         {/* Play & Queue Buttons */}
                         <div className="flex-shrink-0 flex items-center gap-1">
@@ -251,7 +250,7 @@ export default async function SeriesDetailPage({ params, searchParams }: PagePro
                           <PlayButton sermon={sermon} size="sm" />
                         </div>
                       </div>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
