@@ -18,6 +18,24 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    // Log immediately so we can see what's happening
+    console.error('[GTY] ErrorBoundary caught error in getDerivedStateFromError:', error.message);
+
+    // Check if this is a hydration error — if so, DON'T set hasError.
+    // Let React 19 handle hydration recovery on its own instead of
+    // us swallowing it and breaking the entire event system.
+    const msg = error.message?.toLowerCase() || '';
+    if (
+      msg.includes('hydrat') ||
+      msg.includes('server-rendered') ||
+      msg.includes('text content does not match') ||
+      msg.includes('did not match') ||
+      msg.includes('mismatch')
+    ) {
+      console.warn('[GTY] Hydration error detected — letting React 19 recover naturally instead of catching it');
+      return { hasError: false, error: null };
+    }
+
     return { hasError: true, error };
   }
 
