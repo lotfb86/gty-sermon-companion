@@ -1,7 +1,7 @@
 export default function SermonDetailLoading() {
   return (
     <div className="pb-40 animate-fade-in">
-      <header className="px-6 pt-6 pb-4 glass sticky top-0 z-40 border-b border-white/5">
+      <header className="px-6 pt-6 pb-4 glass sticky top-0 z-30 border-b border-white/5">
         <div className="h-4 w-12 bg-[var(--bg-elevated)] rounded animate-pulse mb-3" />
         <div className="h-7 w-3/4 bg-[var(--bg-elevated)] rounded animate-pulse" />
         <div className="h-4 w-1/3 bg-[var(--bg-elevated)] rounded animate-pulse mt-2" />

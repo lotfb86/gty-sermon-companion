@@ -5,6 +5,7 @@ import { AudioProvider } from "@/context/AudioContext";
 import { AuthProvider } from "@/context/AuthContext";
 import BottomNav from "@/components/BottomNav";
 import MiniPlayer from "@/components/MiniPlayer";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 // Elegant Serif for Headings - "Midnight Library" aesthetic
 const playfair = Playfair_Display({
@@ -35,18 +36,20 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${playfair.variable} ${inter.variable} antialiased min-h-screen bg-[var(--bg-primary)]`}>
-        <AuthProvider>
-          <AudioProvider>
-            {/* Mobile-first container with max width */}
-            <main className="max-w-md w-full mx-auto min-h-screen relative bg-[var(--bg-primary)] shadow-2xl">
-              {children}
-            </main>
-            {/* Fixed-position elements must be outside the relative main
-                to avoid Safari stacking context issues with position:fixed */}
-            <MiniPlayer />
-            <BottomNav />
-          </AudioProvider>
-        </AuthProvider>
+        <ErrorBoundary>
+          <AuthProvider>
+            <AudioProvider>
+              {/* Mobile-first container with max width */}
+              <main className="max-w-md w-full mx-auto min-h-screen relative bg-[var(--bg-primary)] shadow-2xl">
+                {children}
+              </main>
+              {/* Fixed-position elements must be outside the relative main
+                  to avoid Safari stacking context issues with position:fixed */}
+              <MiniPlayer />
+              <BottomNav />
+            </AudioProvider>
+          </AuthProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

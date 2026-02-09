@@ -77,7 +77,8 @@ function parseQueueSnapshot(): Map<string, { title?: string; audio_url?: string 
     }
 
     return map;
-  } catch {
+  } catch (err) {
+    console.error('[GTY] Failed to parse queue snapshot from localStorage:', err);
     return new Map();
   }
 }
@@ -133,7 +134,8 @@ export default function ContinueListening({ allSermons = [] }: { allSermons?: Se
                 .filter(Boolean) as ListeningEntry[];
             }
           }
-        } catch {
+        } catch (err) {
+          console.error('[GTY] Failed to load listening history from server:', err);
           // Fall through to local fallback.
         }
       }

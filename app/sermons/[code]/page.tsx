@@ -302,7 +302,7 @@ export default async function SermonDetailPage({
   return (
     <div className="pb-40 animate-fade-in">
       {/* Header */}
-      <header className="px-6 pt-6 pb-4 glass sticky top-0 z-40 border-b border-white/5">
+      <header className="px-6 pt-6 pb-4 glass sticky top-0 z-30 border-b border-white/5">
         <Link
           href="/"
           className="text-[var(--accent)] text-sm font-medium hover:text-[var(--accent-hover)] transition-colors inline-block mb-3"
@@ -398,7 +398,7 @@ export default async function SermonDetailPage({
               Export Transcript
               <ChevronDown size={18} className="transition-transform group-open:rotate-180 text-[var(--bg-primary)]/90" />
             </summary>
-            <div className="absolute left-0 right-0 bottom-full mb-2 z-[60] rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] shadow-2xl p-1.5 space-y-1 max-h-[60vh] overflow-y-auto">
+            <div className="absolute left-0 right-0 bottom-full mb-2 z-[35] rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] shadow-2xl p-1.5 space-y-1 max-h-[60vh] overflow-y-auto">
               <a
                 href={`/api/sermons/${sermon.sermon_code}/export?format=pdf&scope=full`}
                 download

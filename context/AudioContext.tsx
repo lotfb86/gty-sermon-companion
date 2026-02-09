@@ -66,6 +66,71 @@ interface AudioContextType {
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
 
 const QUEUE_STORAGE_KEY = 'gty-listening-queue';
+const QUEUE_DATA_VERSION = 2; // Bump this to force a cache bust
+
+// ============ Self-Healing localStorage Helpers ============
+
+/** Validate that an item looks like a real QueueItem */
+function isValidQueueItem(item: unknown): item is QueueItem {
+  if (!item || typeof item !== 'object') return false;
+  const obj = item as Record<string, unknown>;
+  return (
+    typeof obj.sermonCode === 'string' && obj.sermonCode.length > 0 &&
+    typeof obj.title === 'string' &&
+    typeof obj.audioUrl === 'string' &&
+    (obj.sourceType === 'individual' || obj.sourceType === 'series')
+  );
+}
+
+/** Safely parse the queue from localStorage. Returns null if corrupt/missing. */
+function safeParseQueue(): { items: QueueItem[]; currentIndex: number } | null {
+  try {
+    const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    // Check data version — wipe if outdated
+    if (parsed.version !== undefined && parsed.version !== QUEUE_DATA_VERSION) {
+      console.warn('[GTY] Queue data version mismatch, clearing stale data');
+      localStorage.removeItem(QUEUE_STORAGE_KEY);
+      return null;
+    }
+
+    // Validate structure
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) {
+      console.warn('[GTY] Queue data has invalid structure, clearing');
+      localStorage.removeItem(QUEUE_STORAGE_KEY);
+      return null;
+    }
+
+    // Filter to only valid items (self-healing: drops corrupted entries)
+    const validItems = parsed.items.filter(isValidQueueItem);
+    if (validItems.length !== parsed.items.length) {
+      console.warn(`[GTY] Dropped ${parsed.items.length - validItems.length} corrupted queue items`);
+    }
+
+    if (validItems.length === 0) {
+      // All items were corrupted — clear and start fresh
+      localStorage.removeItem(QUEUE_STORAGE_KEY);
+      return null;
+    }
+
+    return {
+      items: validItems,
+      currentIndex: parsed.currentIndex,
+    };
+  } catch (err) {
+    // JSON.parse failed — data is corrupted
+    console.error('[GTY] Queue localStorage is corrupted, clearing:', err);
+    try {
+      localStorage.removeItem(QUEUE_STORAGE_KEY);
+    } catch {
+      // localStorage itself might be broken (private browsing, full, etc.)
+    }
+    return null;
+  }
+}
 
 function getRestoredQueueIndex(queueItems: QueueItem[], savedIndex: unknown): number {
   const numericIndex = typeof savedIndex === 'number' ? savedIndex : parseInt(String(savedIndex || '-1'), 10);
@@ -78,15 +143,19 @@ function getRestoredQueueIndex(queueItems: QueueItem[], savedIndex: unknown): nu
 
   for (let index = 0; index < queueItems.length; index += 1) {
     const code = queueItems[index].sermonCode;
-    const posRaw = localStorage.getItem(`sermon-${code}-position`);
-    const tsRaw = localStorage.getItem(`sermon-${code}-lastPlayed`);
+    try {
+      const posRaw = localStorage.getItem(`sermon-${code}-position`);
+      const tsRaw = localStorage.getItem(`sermon-${code}-lastPlayed`);
 
-    const position = posRaw ? parseFloat(posRaw) : 0;
-    const timestamp = tsRaw ? parseInt(tsRaw, 10) : 0;
+      const position = posRaw ? parseFloat(posRaw) : 0;
+      const timestamp = tsRaw ? parseInt(tsRaw, 10) : 0;
 
-    if (position > 0 && timestamp > bestTimestamp) {
-      bestTimestamp = timestamp;
-      bestIndex = index;
+      if (position > 0 && timestamp > bestTimestamp) {
+        bestTimestamp = timestamp;
+        bestIndex = index;
+      }
+    } catch {
+      // localStorage read failed for this item — skip it
     }
   }
 
@@ -128,7 +197,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sermon_code: sermonCode, position, duration: dur }),
-    }).catch(() => {});
+    }).catch((err) => console.error('[GTY] Failed to sync position to server:', err));
   }, [user]);
 
   // Position restore is handled in handleLoadedMetadata (not here)
@@ -142,8 +211,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if (audioRef.current && isPlaying) {
         const pos = audioRef.current.currentTime;
         const dur = audioRef.current.duration || 0;
-        localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
-        localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
+        try {
+          localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
+          localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
+        } catch (err) {
+          console.error('[GTY] Failed to save position to localStorage:', err);
+        }
         syncToServer(currentSermon.code, pos, dur);
       }
     }, 5000);
@@ -170,18 +243,21 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           source_id: item.sourceId || null,
         })),
       }),
-    }).catch(() => {});
+    }).catch((err) => console.error('[GTY] Failed to sync queue to server:', err));
   }, [user]);
 
   // Save queue to localStorage
   const saveQueueToLocal = useCallback((queueData: QueueItem[], index: number) => {
     try {
       localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify({
+        version: QUEUE_DATA_VERSION,
         items: queueData,
         currentIndex: index,
         updatedAt: new Date().toISOString(),
       }));
-    } catch {}
+    } catch (err) {
+      console.error('[GTY] Failed to save queue to localStorage:', err);
+    }
   }, []);
 
   // Persist queue on changes
@@ -193,66 +269,60 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [queue, currentQueueIndex, queueLoaded, user, saveQueueToLocal, syncQueueToServer]);
 
-  // Load queue on mount
+  // Load queue on mount — with self-healing corruption detection
   useEffect(() => {
     async function loadQueue() {
+      // Try server first if logged in
       if (user) {
         try {
           const res = await fetch('/api/queue');
           if (res.ok) {
             const data = await res.json();
             if (data.queue && data.queue.length > 0) {
-              // Server queue exists — convert to QueueItem format
-              // We need sermon details which server queue doesn't have
-              // Fall back to localStorage which has full details
-              const localData = localStorage.getItem(QUEUE_STORAGE_KEY);
-              if (localData) {
-                const parsed = JSON.parse(localData);
-                if (parsed.items?.length > 0) {
-                  const restoredIndex = getRestoredQueueIndex(parsed.items, parsed.currentIndex);
-                  setQueue(parsed.items);
-                  setCurrentQueueIndex(restoredIndex);
-                  if (restoredIndex >= 0 && restoredIndex < parsed.items.length) {
-                    const item = parsed.items[restoredIndex] as QueueItem;
-                    setCurrentSermon({
-                      code: item.sermonCode,
-                      title: item.title,
-                      audioUrl: item.audioUrl,
-                      book: item.book,
-                      verse: item.verse,
-                    });
-                  }
-                  setQueueLoaded(true);
-                  return;
+              const localQueue = safeParseQueue();
+              if (localQueue) {
+                const restoredIndex = getRestoredQueueIndex(localQueue.items, localQueue.currentIndex);
+                setQueue(localQueue.items);
+                setCurrentQueueIndex(restoredIndex);
+                if (restoredIndex >= 0 && restoredIndex < localQueue.items.length) {
+                  const item = localQueue.items[restoredIndex];
+                  setCurrentSermon({
+                    code: item.sermonCode,
+                    title: item.title,
+                    audioUrl: item.audioUrl,
+                    book: item.book,
+                    verse: item.verse,
+                  });
                 }
+                setQueueLoaded(true);
+                return;
               }
+              // localStorage was corrupt/empty but server has queue — still mark loaded
+              // The user will just have an empty client queue but the app won't be broken
             }
           }
-        } catch {}
+        } catch (err) {
+          console.error('[GTY] Failed to fetch queue from server:', err);
+        }
       }
 
-      // Fall back to localStorage
-      try {
-        const localData = localStorage.getItem(QUEUE_STORAGE_KEY);
-        if (localData) {
-          const parsed = JSON.parse(localData);
-          if (parsed.items?.length > 0) {
-            const restoredIndex = getRestoredQueueIndex(parsed.items, parsed.currentIndex);
-            setQueue(parsed.items);
-            setCurrentQueueIndex(restoredIndex);
-            if (restoredIndex >= 0 && restoredIndex < parsed.items.length) {
-              const item = parsed.items[restoredIndex] as QueueItem;
-              setCurrentSermon({
-                code: item.sermonCode,
-                title: item.title,
-                audioUrl: item.audioUrl,
-                book: item.book,
-                verse: item.verse,
-              });
-            }
-          }
+      // Fall back to localStorage (with self-healing)
+      const localQueue = safeParseQueue();
+      if (localQueue) {
+        const restoredIndex = getRestoredQueueIndex(localQueue.items, localQueue.currentIndex);
+        setQueue(localQueue.items);
+        setCurrentQueueIndex(restoredIndex);
+        if (restoredIndex >= 0 && restoredIndex < localQueue.items.length) {
+          const item = localQueue.items[restoredIndex];
+          setCurrentSermon({
+            code: item.sermonCode,
+            title: item.title,
+            audioUrl: item.audioUrl,
+            book: item.book,
+            verse: item.verse,
+          });
         }
-      } catch {}
+      }
 
       setQueueLoaded(true);
     }
@@ -319,8 +389,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (currentSermon && audioRef.current) {
       const pos = audioRef.current.currentTime;
       const dur = audioRef.current.duration || 0;
-      localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
-      localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
+      try {
+        localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
+        localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
+      } catch (err) {
+        console.error('[GTY] Failed to save pause position:', err);
+      }
       lastServerSync.current = 0;
       syncToServer(currentSermon.code, pos, dur);
     }
@@ -462,13 +536,17 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
       // Restore saved position — safe now that metadata is loaded
       if (currentSermon) {
-        const savedPosition = localStorage.getItem(`sermon-${currentSermon.code}-position`);
-        if (savedPosition) {
-          const pos = parseFloat(savedPosition);
-          // Only restore if position is meaningful (not at the very end)
-          if (pos > 0 && pos < audioRef.current.duration - 1) {
-            audioRef.current.currentTime = pos;
+        try {
+          const savedPosition = localStorage.getItem(`sermon-${currentSermon.code}-position`);
+          if (savedPosition) {
+            const pos = parseFloat(savedPosition);
+            // Only restore if position is meaningful (not at the very end)
+            if (pos > 0 && pos < audioRef.current.duration - 1) {
+              audioRef.current.currentTime = pos;
+            }
           }
+        } catch (err) {
+          console.error('[GTY] Failed to restore sermon position:', err);
         }
       }
 
@@ -486,8 +564,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (currentSermon && audioRef.current) {
       const pos = audioRef.current.currentTime;
       const dur = audioRef.current.duration || 0;
-      localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
-      localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
+      try {
+        localStorage.setItem(`sermon-${currentSermon.code}-position`, pos.toString());
+        localStorage.setItem(`sermon-${currentSermon.code}-lastPlayed`, Date.now().toString());
+      } catch (err) {
+        console.error('[GTY] Failed to save ended position:', err);
+      }
       lastServerSync.current = 0;
       syncToServer(currentSermon.code, pos, dur);
     }

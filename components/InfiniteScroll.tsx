@@ -70,8 +70,8 @@ export default function InfiniteScroll({
         setNextOffset(data.nextOffset ?? nextOffset + items.length);
         setHasMore(more);
       }
-    } catch {
-      // silently fail, user can scroll down again
+    } catch (err) {
+      console.error('[GTY] Failed to load more items:', err);
     } finally {
       setLoading(false);
       loadingRef.current = false;

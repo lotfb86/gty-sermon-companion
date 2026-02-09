@@ -1,7 +1,7 @@
 export default function BookLoading() {
   return (
     <div className="pb-32 animate-fade-in">
-      <header className="px-4 pt-10 pb-3 glass sticky top-0 z-40 border-b border-white/5">
+      <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
         <div className="h-3 w-24 bg-[var(--bg-elevated)] rounded animate-pulse mb-2" />
         <div className="h-6 w-32 bg-[var(--bg-elevated)] rounded animate-pulse" />
       </header>

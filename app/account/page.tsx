@@ -12,7 +12,7 @@ export default function AccountPage() {
   if (loading) {
     return (
       <div className="pb-32 animate-fade-in">
-        <header className="px-4 pt-10 pb-3 glass sticky top-0 z-40 border-b border-white/5">
+        <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
           <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Account</h1>
         </header>
         <div className="flex justify-center py-12">
@@ -25,7 +25,7 @@ export default function AccountPage() {
   if (!user) {
     return (
       <div className="pb-32 animate-fade-in">
-        <header className="px-4 pt-10 pb-3 glass sticky top-0 z-40 border-b border-white/5">
+        <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
           <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Account</h1>
           <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">
             Sign in to continue
@@ -59,7 +59,7 @@ export default function AccountPage() {
 
   return (
     <div className="pb-32 animate-fade-in">
-      <header className="px-4 pt-10 pb-3 glass sticky top-0 z-40 border-b border-white/5">
+      <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
         <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Account</h1>
         <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">
           Your Profile

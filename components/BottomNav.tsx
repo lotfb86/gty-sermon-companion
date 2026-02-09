@@ -17,43 +17,41 @@ export default function BottomNav() {
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
-      <div className="max-w-md mx-auto pointer-events-auto">
-        {/* Glassmorphism Background */}
-        <div className="border-t border-white/5 pb-[env(safe-area-inset-bottom,8px)] pt-1.5 px-4" style={{ background: 'rgba(10, 10, 10, 1)', backdropFilter: 'blur(16px)' }}>
-          <div className="flex justify-between items-center">
-            {navItems.map((item) => {
-              const isActive = pathname === item.path || pathname.startsWith(item.path + '/');
-              const Icon = item.icon;
+    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50 w-full max-w-md">
+      {/* Glassmorphism Background */}
+      <div className="border-t border-white/5 pb-[env(safe-area-inset-bottom,8px)] pt-1.5 px-4" style={{ background: 'rgba(10, 10, 10, 1)', backdropFilter: 'blur(16px)' }}>
+        <div className="flex justify-between items-center">
+          {navItems.map((item) => {
+            const isActive = pathname === item.path || pathname.startsWith(item.path + '/');
+            const Icon = item.icon;
 
-              return (
-                <Link
-                  key={item.name}
-                  href={item.path}
-                  className="flex flex-col items-center gap-1 p-2 group transition-all"
+            return (
+              <Link
+                key={item.name}
+                href={item.path}
+                className="flex flex-col items-center gap-1 p-2 group transition-all"
+              >
+                <Icon
+                  size={22}
+                  strokeWidth={isActive ? 2.5 : 1.5}
+                  className={`transition-colors duration-300 ${
+                    isActive
+                      ? "text-[var(--accent)]"
+                      : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
+                  }`}
+                />
+                <span
+                  className={`text-[10px] font-medium tracking-wide transition-colors ${
+                    isActive
+                      ? "text-[var(--accent)]"
+                      : "text-[var(--text-tertiary)]"
+                  }`}
                 >
-                  <Icon
-                    size={22}
-                    strokeWidth={isActive ? 2.5 : 1.5}
-                    className={`transition-colors duration-300 ${
-                      isActive
-                        ? "text-[var(--accent)]"
-                        : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
-                    }`}
-                  />
-                  <span
-                    className={`text-[10px] font-medium tracking-wide transition-colors ${
-                      isActive
-                        ? "text-[var(--accent)]"
-                        : "text-[var(--text-tertiary)]"
-                    }`}
-                  >
-                    {item.name}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
+                  {item.name}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

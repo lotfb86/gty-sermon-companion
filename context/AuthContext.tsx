@@ -17,23 +17,41 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_TIMEOUT_MS = 5000; // Don't let auth check hang forever
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Check session on mount
+  // Check session on mount — with timeout so it never hangs
   useEffect(() => {
-    fetch('/api/auth/me')
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, AUTH_TIMEOUT_MS);
+
+    fetch('/api/auth/me', { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
         setUser(data.user || null);
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err.name === 'AbortError') {
+          console.warn('[GTY] Auth check timed out after', AUTH_TIMEOUT_MS, 'ms');
+        } else {
+          console.error('[GTY] Auth check failed:', err);
+        }
         setUser(null);
       })
       .finally(() => {
+        clearTimeout(timeout);
         setLoading(false);
       });
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
@@ -51,7 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(data.user);
       return { success: true };
-    } catch {
+    } catch (err) {
+      console.error('[GTY] Login failed:', err);
       return { success: false, error: 'Network error' };
     }
   }, []);
@@ -71,13 +90,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(data.user);
       return { success: true };
-    } catch {
+    } catch (err) {
+      console.error('[GTY] Registration failed:', err);
       return { success: false, error: 'Network error' };
     }
   }, []);
 
   const logout = useCallback(async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('[GTY] Logout request failed:', err);
+    }
     setUser(null);
   }, []);
 

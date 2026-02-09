@@ -58,7 +58,8 @@ export default function ListeningHistory({ allSermons }: { allSermons: SermonDat
               return { sermon, position: h.position, duration: dur, progress };
             }).filter(Boolean) as ListeningEntry[];
           }
-        } catch {
+        } catch (err) {
+          console.error('[GTY] Failed to load listening history from server:', err);
           // Fall back to localStorage on server error
         }
       }

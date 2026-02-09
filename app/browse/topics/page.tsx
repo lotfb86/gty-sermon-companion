@@ -62,7 +62,7 @@ export default async function BrowseTopicsPage() {
   return (
     <div className="pb-32 animate-fade-in">
       {/* Header + Alphabet Nav (sticky together) */}
-      <header className="glass sticky top-0 z-40 border-b border-white/5">
+      <header className="glass sticky top-0 z-30 border-b border-white/5">
         <div className="px-4 pt-10 pb-2">
           <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">
             Browse by Topic

@@ -83,7 +83,8 @@ export default function AddToQueueButton({
         addToQueue(items);
         setStatus('added');
         setTimeout(() => setStatus('idle'), 2000);
-      } catch {
+      } catch (err) {
+        console.error('[GTY] Failed to add series to queue:', err);
         setStatus('idle');
       }
       return;

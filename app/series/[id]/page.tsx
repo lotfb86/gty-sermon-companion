@@ -66,7 +66,7 @@ export default async function SeriesDetailPage({ params, searchParams }: PagePro
   return (
     <div className="pb-32 animate-fade-in">
       {/* Header */}
-      <header className="px-4 pt-10 pb-3 glass sticky top-0 z-40 border-b border-white/5">
+      <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
         <Link
           href={fromBook
             ? `/browse/study-by-book/${encodeURIComponent(fromBook)}`
