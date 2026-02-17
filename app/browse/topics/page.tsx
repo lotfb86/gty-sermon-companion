@@ -60,7 +60,7 @@ export default async function BrowseTopicsPage() {
   const letters = Object.keys(groupedTopics).sort();
 
   return (
-    <div className="pb-32 animate-fade-in">
+    <div className="pb-40 animate-fade-in">
       {/* Header + Alphabet Nav (sticky together) */}
       <header className="glass sticky top-0 z-30 border-b border-white/5">
         <div className="px-4 pt-10 pb-2">

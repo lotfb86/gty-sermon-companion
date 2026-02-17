@@ -564,7 +564,8 @@ export default function TranscriptStudyFeed({
         <button
           type="button"
           onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })}
-          className="fixed right-4 bottom-28 z-40 inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border-medium)] bg-[var(--surface)] text-[var(--accent)] shadow-lg hover:bg-[var(--surface-hover)]"
+          className="fixed right-4 z-40 inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border-medium)] bg-[var(--surface)] text-[var(--accent)] shadow-lg hover:bg-[var(--surface-hover)]"
+          style={{ bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}
           aria-label="Jump to bottom of results"
           title="Jump to bottom"
         >

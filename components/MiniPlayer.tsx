@@ -13,7 +13,7 @@ export default function MiniPlayer() {
     currentTime,
     duration,
     togglePlay,
-    pause,
+    stop,
     queue,
     currentQueueIndex,
     playNext,
@@ -30,7 +30,7 @@ export default function MiniPlayer() {
   const hasQueue = queue.length > 1;
 
   return (
-    <div className="fixed bottom-14 left-1/2 -translate-x-1/2 z-40 w-full max-w-md px-3">
+    <div className="fixed left-1/2 -translate-x-1/2 z-40 w-full max-w-md px-3" style={{ bottom: 'calc(56px + env(safe-area-inset-bottom, 0px))' }}>
       <div className="glass border border-white/10 rounded-xl p-3 shadow-2xl backdrop-blur-xl">
         <div className="flex items-center gap-2.5">
           {/* Previous Button (only when queue active) */}
@@ -102,9 +102,9 @@ export default function MiniPlayer() {
             </div>
           </div>
 
-          {/* Close Button */}
+          {/* Close Button — dismisses the mini player (saves position first) */}
           <button
-            onClick={() => pause()}
+            onClick={() => stop()}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-[var(--text-tertiary)] shrink-0"
           >
             <X size={16} />

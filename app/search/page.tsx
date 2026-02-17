@@ -170,7 +170,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
   };
 
   return (
-    <div className="pb-32 animate-fade-in">
+    <div className="pb-40 animate-fade-in">
       {/* Header */}
       <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
         <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Search</h1>
@@ -194,7 +194,6 @@ export default async function SearchPage({ searchParams }: PageProps) {
                 placeholder={dim ? `Search ${dim.labelPlural.toLowerCase()}...` : 'Search by title, topic, or scripture...'}
                 className="search-input"
                 defaultValue={query}
-                autoFocus
               />
               {mode !== 'all' && <input type="hidden" name="mode" value={mode} />}
             </div>

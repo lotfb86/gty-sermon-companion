@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useAudio } from '@/context/AudioContext';
 import { Play, Pause, RotateCcw, RotateCw, Volume2 } from 'lucide-react';
 
@@ -17,6 +18,13 @@ export default function AudioPlayer() {
     setPlaybackRate,
     setVolume,
   } = useAudio();
+
+  // iOS does not support programmatic volume control on media elements.
+  // Detect iOS to hide the volume slider since it does nothing on those devices.
+  const [isIOS, setIsIOS] = useState(false);
+  useEffect(() => {
+    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
+  }, []);
 
   if (!currentSermon) {
     return null; // No sermon loaded
@@ -114,25 +122,27 @@ export default function AudioPlayer() {
         ))}
       </div>
 
-      {/* Volume Control */}
-      <div className="flex items-center gap-3">
-        <Volume2 size={18} className="text-[var(--text-tertiary)] shrink-0" />
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={volume}
-          onChange={(e) => setVolume(parseFloat(e.target.value))}
-          className="flex-1 h-2 bg-[var(--border-medium)] rounded-full appearance-none cursor-pointer"
-          style={{
-            background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${volume * 100}%, rgba(255,255,255,0.1) ${volume * 100}%, rgba(255,255,255,0.1) 100%)`,
-          }}
-        />
-        <span className="text-xs text-[var(--text-tertiary)] w-10 text-right font-mono">
-          {Math.round(volume * 100)}%
-        </span>
-      </div>
+      {/* Volume Control - hidden on iOS where programmatic volume is not supported */}
+      {!isIOS && (
+        <div className="flex items-center gap-3">
+          <Volume2 size={18} className="text-[var(--text-tertiary)] shrink-0" />
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            className="flex-1 h-2 bg-[var(--border-medium)] rounded-full appearance-none cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${volume * 100}%, rgba(255,255,255,0.1) ${volume * 100}%, rgba(255,255,255,0.1) 100%)`,
+            }}
+          />
+          <span className="text-xs text-[var(--text-tertiary)] w-10 text-right font-mono">
+            {Math.round(volume * 100)}%
+          </span>
+        </div>
+      )}
     </div>
   );
 }

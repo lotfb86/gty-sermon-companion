@@ -82,7 +82,7 @@ export default async function TopicDetailPage({ params, searchParams }: PageProp
   };
 
   return (
-    <div className="pb-32 animate-fade-in">
+    <div className="pb-40 animate-fade-in">
       {/* Header */}
       <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
         <Link href="/browse/topics" className="text-[var(--accent)] text-xs hover:text-[var(--accent-hover)] transition-colors mb-2 inline-block">

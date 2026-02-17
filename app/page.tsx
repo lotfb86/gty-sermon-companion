@@ -12,7 +12,7 @@ export default async function HomePage() {
   const topThemes = await getCachedMetadataValues('themes', { limit: 12 });
 
   return (
-    <div className="pb-32 space-y-6 animate-fade-in">
+    <div className="pb-40 space-y-6 animate-fade-in">
       {/* Header */}
       <header className="px-4 pt-10 pb-3 sticky top-0 z-30 glass border-b border-white/5">
         <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">GTY Companion</h1>

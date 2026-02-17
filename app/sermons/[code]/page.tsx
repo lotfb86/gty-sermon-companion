@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { getSermonByCode, getTopicsForSermon, getScriptureReferencesForSermon, getSeriesById, getAdjacentSermonsInSeries, getRelatedSermons } from '@/lib/db';
 import AudioPlayer from '@/components/AudioPlayer';
 import PlayButton from '@/components/PlayButton';
-import { Calendar, Clock, BookOpen, ExternalLink, Download, ChevronDown } from 'lucide-react';
+import { Calendar, Clock, BookOpen, ExternalLink } from 'lucide-react';
+import ExportDropdown from '@/components/sermon/ExportDropdown';
 
 import SermonTabs from '@/components/sermon/SermonTabs';
 import ExpandableSummary from '@/components/sermon/ExpandableSummary';
@@ -392,52 +393,7 @@ export default async function SermonDetailPage({
 
         {/* Actions */}
         <div className="flex gap-3">
-          <details className="relative flex-1 group">
-            <summary className="btn btn-primary w-full list-none flex items-center justify-center gap-2 cursor-pointer">
-              <Download size={16} />
-              Export Transcript
-              <ChevronDown size={18} className="transition-transform group-open:rotate-180 text-[var(--bg-primary)]/90" />
-            </summary>
-            <div className="absolute left-0 right-0 bottom-full mb-2 z-[35] rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] shadow-2xl p-1.5 space-y-1 max-h-[60vh] overflow-y-auto">
-              <a
-                href={`/api/sermons/${sermon.sermon_code}/export?format=pdf&scope=full`}
-                download
-                className="block px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
-              >
-                Download whole transcript (PDF)
-              </a>
-              <a
-                href={`/api/sermons/${sermon.sermon_code}/export?format=docx&scope=full`}
-                download
-                className="block px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
-              >
-                Download whole transcript (DOCX)
-              </a>
-              <a
-                href={`/api/sermons/${sermon.sermon_code}/export?format=pdf&scope=highlights&q=${encodeURIComponent(highlightQuery)}`}
-                download
-                className={`block px-3 py-2 rounded-lg text-sm hover:bg-[var(--surface-hover)] ${
-                  highlightQuery ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] pointer-events-none opacity-50'
-                }`}
-              >
-                Download highlighted paragraphs (PDF)
-              </a>
-              <a
-                href={`/api/sermons/${sermon.sermon_code}/export?format=docx&scope=highlights&q=${encodeURIComponent(highlightQuery)}`}
-                download
-                className={`block px-3 py-2 rounded-lg text-sm hover:bg-[var(--surface-hover)] ${
-                  highlightQuery ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] pointer-events-none opacity-50'
-                }`}
-              >
-                Download highlighted paragraphs (DOCX)
-              </a>
-              {!highlightQuery && (
-                <p className="px-3 pb-1 pt-0.5 text-[10px] text-[var(--text-tertiary)]">
-                  Open this sermon from transcript search to enable highlighted-paragraph exports.
-                </p>
-              )}
-            </div>
-          </details>
+          <ExportDropdown sermonCode={sermon.sermon_code} highlightQuery={highlightQuery} />
           {sermon.audio_url ? (
             <a
               href={sermon.audio_url}

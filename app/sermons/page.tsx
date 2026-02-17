@@ -72,7 +72,7 @@ export default async function AllSermonsPage({ searchParams }: PageProps) {
   // Offset is no longer used for manual pagination (using infinite scroll)
 
   return (
-    <div className="pb-32 animate-fade-in">
+    <div className="pb-40 animate-fade-in">
       {/* Header */}
       <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
         <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">All Sermons</h1>

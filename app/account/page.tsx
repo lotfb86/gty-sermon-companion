@@ -11,7 +11,7 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <div className="pb-32 animate-fade-in">
+      <div className="pb-40 animate-fade-in">
         <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
           <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Account</h1>
         </header>
@@ -24,7 +24,7 @@ export default function AccountPage() {
 
   if (!user) {
     return (
-      <div className="pb-32 animate-fade-in">
+      <div className="pb-40 animate-fade-in">
         <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
           <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Account</h1>
           <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">
@@ -58,7 +58,7 @@ export default function AccountPage() {
   };
 
   return (
-    <div className="pb-32 animate-fade-in">
+    <div className="pb-40 animate-fade-in">
       <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
         <h1 className="font-serif text-lg font-semibold text-[var(--gold-text)]">Account</h1>
         <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] mt-0.5">

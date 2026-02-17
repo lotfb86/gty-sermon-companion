@@ -64,7 +64,7 @@ export default async function MetadataDetailPage({ params, searchParams }: PageP
   };
 
   return (
-    <div className="pb-32 animate-fade-in">
+    <div className="pb-40 animate-fade-in">
       {/* Header */}
       <header className="px-4 pt-10 pb-3 glass sticky top-0 z-30 border-b border-white/5">
         <Link

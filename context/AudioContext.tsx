@@ -40,6 +40,7 @@ interface AudioContextType {
   // Basic controls
   play: (sermon: { code: string; title: string; audioUrl: string; book?: string; verse?: string }) => void;
   pause: () => void;
+  stop: () => void;
   togglePlay: () => void;
   seek: (time: number) => void;
   skip: (seconds: number) => void;
@@ -184,6 +185,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   // Ref to signal that we want to auto-play once audio metadata is loaded
   const pendingPlayRef = useRef<boolean>(false);
+
+  // Throttle timeupdate to ~2 updates/sec instead of ~4 to reduce re-renders on mobile
+  const lastTimeUpdateRef = useRef<number>(0);
 
   // ============ Position Sync ============
 
@@ -400,6 +404,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Stop playback and dismiss the player (saves position first)
+  const stop = () => {
+    pause();
+    setCurrentSermon(null);
+    setCurrentTime(0);
+    setDuration(0);
+  };
+
   const togglePlay = () => {
     if (isPlaying) {
       pause();
@@ -526,6 +538,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
+      // Throttle state updates to ~2/sec to reduce re-render overhead on mobile.
+      // The audio element's timeupdate fires ~4 times/sec; we don't need every one.
+      const now = performance.now();
+      if (now - lastTimeUpdateRef.current < 500) return;
+      lastTimeUpdateRef.current = now;
       setCurrentTime(audioRef.current.currentTime);
     }
   };
@@ -595,6 +612,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         volume,
         play,
         pause,
+        stop,
         togglePlay,
         seek,
         skip,
@@ -640,6 +658,7 @@ const defaultAudioContext: AudioContextType = {
   volume: 1,
   play: () => {},
   pause: () => {},
+  stop: () => {},
   togglePlay: () => {},
   seek: () => {},
   skip: () => {},
